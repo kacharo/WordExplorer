@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Word Explorer</title>
+<style>
+:root{--bg:#f6f4ee;--card:#fff;--ink:#22303c;--muted:#5d6b78;--brand:#2f6fed;--brand2:#e8f0ff;--good:#1f9d63;--goodbg:#dff5ea;--bad:#d64545;--badbg:#fde6e6;--warn:#b86e00;--warnbg:#fff1d6;--line:#e1ddd0;--fs:30px;--lh:1.9}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Atkinson Hyperlegible","Trebuchet MS",Verdana,system-ui,sans-serif;font-size:18px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 18px;background:#fff;border-bottom:2px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{font-size:22px;margin:0 8px 0 0}
+nav{display:flex;gap:6px;flex-wrap:wrap;flex:1}
+nav button{border:0;background:transparent;font:inherit;font-weight:700;padding:10px 16px;border-radius:12px;cursor:pointer;color:var(--muted)}
+nav button.on{background:var(--brand2);color:var(--brand)}
+#xp{font-weight:700;background:var(--warnbg);color:var(--warn);padding:6px 12px;border-radius:99px}
+main{max-width:980px;margin:0 auto;padding:18px}
+.card{background:var(--card);border:2px solid var(--line);border-radius:18px;padding:18px;margin-bottom:16px}
+h2{margin:0 0 10px;font-size:22px}
+button.b{font:inherit;font-weight:700;border:0;border-radius:14px;padding:12px 18px;cursor:pointer;background:var(--brand);color:#fff}
+button.b.alt{background:var(--brand2);color:var(--brand)}
+button.b.red{background:var(--badbg);color:var(--bad)}
+button.b.green{background:var(--good)}
+button.b:disabled{opacity:.4;cursor:not-allowed}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.muted{color:var(--muted)}
+.bar{height:12px;background:#ece8dc;border-radius:99px;overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--good);width:0;transition:width .3s}
+#text{font-size:var(--fs);line-height:var(--lh);padding:10px 4px}
+.w{border-radius:8px;padding:0 3px;cursor:pointer;transition:background .15s}
+.w:hover{background:#eef2f7}
+.w.now{background:#ffe27a;box-shadow:0 0 0 3px #ffe27a}
+.w.heard{background:var(--brand2)}
+.w.ok{color:var(--good)}
+.w.help{color:var(--warn);text-decoration:underline dotted}
+.w.bad{animation:shake .4s;background:var(--badbg)}
+.w.model{background:#cfe3ff}
+@keyframes shake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+#coach{font-size:20px;font-weight:700;padding:12px 14px;border-radius:14px;background:var(--brand2);color:var(--brand);margin:10px 0}
+#coach.good{background:var(--goodbg);color:var(--good)}
+#coach.warn{background:var(--warnbg);color:var(--warn)}
+#heard{min-height:24px;color:var(--muted);font-style:italic}
+.banner{background:var(--warnbg);color:var(--warn);padding:10px 14px;border-radius:12px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px}
+.wc{border:2px solid var(--line);border-radius:16px;padding:14px;background:#fff}
+.wc h3{margin:0;font-size:22px}
+.dots{letter-spacing:3px;color:var(--good)}
+.opt{display:block;width:100%;text-align:left;font:inherit;font-size:20px;padding:14px 16px;margin:8px 0;border:2px solid var(--line);border-radius:14px;background:#fff;cursor:pointer}
+.opt:hover:not(:disabled){border-color:var(--brand)}
+.opt.right{background:var(--goodbg);border-color:var(--good)}
+.opt.wrong{background:var(--badbg);border-color:var(--bad)}
+.big{font-size:24px;line-height:1.5}
+input[type=text],textarea,select{font:inherit;padding:10px;border:2px solid var(--line);border-radius:12px;width:100%}
+dialog{border:0;border-radius:20px;max-width:540px;width:92%;padding:22px;box-shadow:0 10px 40px #0004}
+dialog::backdrop{background:#0006}
+.def{margin:6px 0;font-size:19px}
+.pos{font-style:italic;color:var(--muted)}
+.hide{display:none!important}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#22303c;color:#fff;padding:10px 18px;border-radius:99px;opacity:0;transition:.3s;pointer-events:none;z-index:20}
+#toast.on{opacity:1}
+footer{max-width:980px;margin:0 auto;padding:0 18px 18px;text-align:center;color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+<header>
+  <h1>📖 Word Explorer</h1>
+  <nav id="tabs">
+    <button data-tab="read">📚 Read</button>
+    <button data-tab="words">🧠 My Words</button>
+    <button data-tab="play">🎮 Word Quest</button>
+    <button data-tab="lib">📁 Library</button>
+  </nav>
+  <div id="xp">⭐ 0</div>
+</header>
+<main>
+  <section id="tab-read"></section>
+  <section id="tab-words" class="hide"></section>
+  <section id="tab-play" class="hide"></section>
+  <section id="tab-lib" class="hide"></section>
+</main>
+<footer id="update-time"></footer>
+<dialog id="dlg"></dialog>
+<div id="toast"></div>
+
+<script>
+document.querySelector('#update-time').textContent='Last code update: '+new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'short'}).format(new Date(document.lastModified));
+(function(){
+'use strict';
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const escRe=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
+
+/* ---------- storage ---------- */
+const store={
+  get(k,d){try{const v=localStorage.getItem('we_'+k);return v?JSON.parse(v):d;}catch(e){return d;}},
+  set(k,v){try{localStorage.setItem('we_'+k,JSON.stringify(v));}catch(e){toast('Could not save (storage full?)');}}
+};
+let docs=store.get('docs',[]);
+let vocab=store.get('vocab',{});
+let settings=Object.assign({size:30,spacing:1.9,strict:false},store.get('settings',{}));
+let stats=Object.assign({xp:0},store.get('stats',{}));
+let lastDoc=store.get('lastDoc',null);
+const saveDocs=()=>store.set('docs',docs), saveVocab=()=>store.set('vocab',vocab), saveStats=()=>{store.set('stats',stats);$('#xp').textContent='⭐ '+stats.xp;};
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2200);}
+
+/* ---------- sample ---------- */
+if(!docs.length){
+  docs.push({id:'sample',title:'Sample: The Amazing Octopus',done:[false,false,false],paras:[
+   "An octopus is a clever animal that lives in the ocean. It has eight long arms and a soft body. Scientists are amazed by how smart it is.",
+   "An octopus can change its color in a blink. It uses this trick to hide from enemies and to sneak up on its dinner. This is called camouflage.",
+   "When danger comes close, an octopus can squirt dark ink into the water. The cloud of ink confuses the predator, and the octopus escapes."
+  ]});
+  saveDocs();
+}
+
+/* ---------- speech ---------- */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+function pickVoice(){
+  if(!('speechSynthesis' in window))return null;
+  const vs=speechSynthesis.getVoices();
+  return vs.find(v=>/en[-_]US/i.test(v.lang)&&/(Samantha|Google US|Aria|Jenny|Ava)/i.test(v.name))||vs.find(v=>/^en/i.test(v.lang))||null;
+}
+if('speechSynthesis' in window){speechSynthesis.onvoiceschanged=()=>{};}
+let curU=null;
+function say(text,opts){
+  opts=opts||{};
+  if(!('speechSynthesis' in window)){opts.cb&&opts.cb();return null;}
+  if(curU)curU._cb=null;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  u.rate=opts.rate||0.85;u.lang='en-US';
+  const v=pickVoice();if(v)u.voice=v;
+  u._cb=opts.cb||null;
+  u.onend=u.onerror=()=>{const f=u._cb;u._cb=null;f&&f();};
+  curU=u;
+  speechSynthesis.speak(u);
+  return u;
+}
+function stopSpeech(){if(curU)curU._cb=null;if('speechSynthesis' in window)speechSynthesis.cancel();}
+
+/* ---------- word helpers ---------- */
+const NUMW={'0':'zero','1':'one','2':'two','3':'three','4':'four','5':'five','6':'six','7':'seven','8':'eight','9':'nine','10':'ten','11':'eleven','12':'twelve','13':'thirteen','14':'fourteen','15':'fifteen','16':'sixteen','17':'seventeen','18':'eighteen','19':'nineteen','20':'twenty'};
+const NUMREV={};Object.keys(NUMW).forEach(k=>NUMREV[NUMW[k]]=k);
+const FILL=new Set(['um','uh','hmm','er','ah','uhm','mm','erm']);
+function lev(a,b){const m=a.length,n=b.length;let p=Array.from({length:n+1},(_,j)=>j);for(let i=1;i<=m;i++){const c=[i];for(let j=1;j<=n;j++)c[j]=Math.min(p[j]+1,c[j-1]+1,p[j-1]+(a[i-1]===b[j-1]?0:1));p=c;}return p[n];}
+const SMALL=new Set('a an the and of to in is it at on as or be by he we so if my up do no me us am i you was for are but his her him she our out all can had has not one two too'.split(' '));
+const HOMO=[['to','too','two'],['their','there',"they're"],['for','four','fore'],['no','know'],['one','won'],['right','write'],['see','sea'],['be','bee'],['by','buy','bye'],['hear','here'],['its',"it's"],['whole','hole'],['new','knew'],['would','wood'],['our','are','hour'],['your',"you're"],['an','and','in','en'],['a','uh','ah','eh','i'],['the','thee','da','duh','a'],['of','off','uv'],['weather','whether'],['wear','where'],['eight','ate'],['pair','pear','pare'],['piece','peace'],['sun','son'],['tail','tale'],['wait','weight'],['way','weigh'],['week','weak'],['sail','sale'],['flower','flour'],['made','maid'],['mail','male'],['meat','meet'],['plain','plane'],['road','rode'],['steal','steel'],['threw','through'],['waist','waste']];
+const HOMOMAP={};
+HOMO.forEach(g=>g.forEach(w=>{(HOMOMAP[w]=HOMOMAP[w]||[]).push.apply(HOMOMAP[w],g);}));
+function same(a,b){
+  if(!a||!b)return false;
+  if(a===b)return true;
+  if(NUMW[a]===b||NUMW[b]===a)return true;
+  if(HOMOMAP[a]&&HOMOMAP[a].indexOf(b)>=0)return true;
+  if(settings.strict)return false;
+  if(SMALL.has(b)&&a.length<=4&&lev(a,b)<=1)return true;
+  const L=Math.max(a.length,b.length),lim=L>=10?2:(L>=6?1:0);
+  return lim>0&&Math.abs(a.length-b.length)<=lim&&lev(a,b)<=lim;
+}
+function normExpected(t){
+  return t.toLowerCase().replace(/[’‘]/g,"'").replace(/^[^a-z0-9]+|[^a-z0-9]+$/g,'').replace(/[^a-z0-9']/g,'').replace(/^'+|'+$/g,'');
+}
+function spokenWords(s){
+  return s.toLowerCase().replace(/[’‘]/g,"'").replace(/(\d),(\d)/g,'$1$2').replace(/[^a-z0-9'\s-]/g,' ').replace(/-/g,' ').split(/\s+/).filter(Boolean);
+}
+function tokenize(par){
+  const raw=par.normalize('NFKC').replace(/(\w)-(\w)/g,'$1- $2').replace(/[—–]/g,' — ').split(/\s+/).filter(Boolean);
+  return raw.map(t=>({t,n:normExpected(t),join:/[a-z]-$/i.test(t)})).filter(x=>x.t.length);
+}
+function sentenceWith(par,w){
+  const ss=par.match(/[^.!?]+[.!?]*["')\]]*/g)||[par];
+  const re=new RegExp('\\b'+escRe(w)+'\\b','i');
+  const s=ss.find(x=>re.test(x));
+  return (s||'').trim();
+}
+
+/* ---------- dictionary ---------- */
+const dictCache={};
+function variants(w){
+  const c=[w,w.replace(/ies$/,'y'),w.replace(/ied$/,'y'),w.replace(/es$/,''),w.replace(/s$/,''),w.replace(/ed$/,''),w.replace(/ed$/,'e'),w.replace(/ing$/,''),w.replace(/ing$/,'e'),w.replace(/ly$/,''),w.replace(/er$/,''),w.replace(/est$/,'')];
+  return c.filter((x,i)=>x&&x.length>2&&c.indexOf(x)===i);
+}
+async function define(w){
+  w=w.toLowerCase();
+  if(w in dictCache)return dictCache[w];
+  for(const v of variants(w)){
+    try{
+      const r=await fetch('https://api.dictionaryapi.dev/v2/entries/en/'+encodeURIComponent(v));
+      if(!r.ok)continue;
+      const j=await r.json();const e=j[0];
+      const ph=e.phonetics||[];
+      const out={word:e.word,phonetic:e.phonetic||(ph.find(p=>p.text)||{}).text||'',audio:(ph.find(p=>p.audio)||{}).audio||'',
+        meanings:(e.meanings||[]).slice(0,3).map(m=>({pos:m.partOfSpeech,defs:m.definitions.slice(0,2).map(d=>({def:d.definition,ex:d.example||''}))}))};
+      dictCache[w]=out;return out;
+    }catch(err){}
+  }
+  dictCache[w]=null;return null;
+}
+async function addVocab(w,ctx,helped){
+  w=w.toLowerCase();
+  let e=vocab[w];
+  if(!e){e=vocab[w]={w,pos:'',def:'',ex:'',ctx:ctx||'',phonetic:'',mastery:0,added:Date.now(),helped:0};}
+  if(helped)e.helped=(e.helped||0)+1;
+  if(ctx&&!e.ctx)e.ctx=ctx;
+  saveVocab();
+  if(!e.def){
+    const d=await define(w);
+    if(d&&d.meanings[0]){e.pos=d.meanings[0].pos;e.def=d.meanings[0].defs[0].def;e.ex=d.meanings[0].defs[0].ex||'';e.phonetic=d.phonetic;saveVocab();}
+  }
+  return e;
+}
+
+/* ---------- tabs ---------- */
+let tab='read';
+function show(t){
+  stopListening();stopSpeech();stopSay();
+  tab=t;
+  ['read','words','play','lib'].forEach(x=>$('#tab-'+x).classList.toggle('hide',x!==t));
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
+  ({read:renderRead,words:renderWords,play:renderPlay,lib:renderLib})[t]();
+}
+$('#tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(b)show(b.dataset.tab);});
+
+/* ---------- READER ---------- */
+const R={doc:null,pi:0,words:[],cur:0,fails:0,listening:false,hold:false,helped:new Set(),finished:false};
+let rec=null,recTimer=null;
+
+function openDoc(id,pi){
+  R.doc=docs.find(d=>d.id===id)||null;
+  if(R.doc){
+    lastDoc=id;store.set('lastDoc',id);
+    if(pi==null){const f=R.doc.done.findIndex(x=>!x);pi=f<0?R.doc.paras.length-1:f;}
+    R.pi=pi;
+  }
+}
+function firstUndone(d){const f=d.done.findIndex(x=>!x);return f<0?d.paras.length:f;}
+
+function renderRead(){
+  const el=$('#tab-read');
+  if(!R.doc)openDoc(lastDoc||(docs[0]&&docs[0].id));
+  if(!R.doc){el.innerHTML='<div class="card"><h2>No reading yet</h2><p>Go to Library and add a PDF.</p></div>';return;}
+  const d=R.doc;
+  const doneN=d.done.filter(Boolean).length;
+  R.words=tokenize(d.paras[R.pi]).map(x=>x);
+  const spoken=R.words.filter(w=>w.n);
+  R.cur=0;R.fails=0;R.helped=new Set();R.finished=false;
+  // build html; spoken index mapping
+  let si=0,html='';
+  R.tokens=R.words;
+  R.words=spoken;
+  R.tokens.forEach((tk,i)=>{
+    if(tk.n){html+=`<span class="w" data-i="${si}">${esc(tk.t)}</span>`;si++;}
+    else html+=`<span>${esc(tk.t)}</span>`;
+    if(!tk.join)html+=' ';
+  });
+  el.innerHTML=`
+    ${SR?'':'<div class="banner">🎤 Speech listening needs a recent Chrome or Safari. You can still read, listen and play.</div>'}
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <div><b>${esc(d.title)}</b> <span class="muted">· Part ${R.pi+1} of ${d.paras.length}</span></div>
+        <div class="row">
+          <button class="b alt" id="fsm">A−</button><button class="b alt" id="fbig">A+</button>
+          <label class="muted"><input type="checkbox" id="strict" ${settings.strict?'checked':''}> Strict</label>
+        </div>
+      </div>
+      <div class="bar" style="margin-top:8px"><i style="width:${doneN/d.paras.length*100}%"></i></div>
+    </div>
+    <div class="card">
+      <div id="text">${html}</div>
+      <div id="coach">Press “Start reading” and read the yellow word out loud. Tap any word to learn it.</div>
+      <div id="heard"></div>
+      <div class="row">
+        <button class="b green" id="bStart" ${SR?'':'disabled'}>🎤 Start reading</button>
+        <button class="b alt" id="bListen">🔊 Listen first</button>
+        <button class="b alt" id="bRestart">↺ Restart</button>
+        <button class="b alt" id="bAccept" title="For a grown-up: accept the current word">✔ Accept word (grown-up)</button>
+      </div>
+    </div>
+    <div class="row">
+      <button class="b alt" id="bPrev" ${R.pi===0?'disabled':''}>← Back</button>
+      <button class="b" id="bNext" ${(!d.done[R.pi]||R.pi>=d.paras.length-1)?'disabled':''}>Next part →</button>
+    </div>`;
+  document.documentElement.style.setProperty('--fs',settings.size+'px');
+  document.documentElement.style.setProperty('--lh',settings.spacing);
+  markNow();
+  $('#bStart').onclick=()=>R.listening?stopListening(true):startListening();
+  $('#bListen').onclick=modelRead;
+  $('#bRestart').onclick=()=>{stopListening();stopSpeech();renderRead();};
+  $('#bAccept').onclick=acceptWord;
+  $('#bPrev').onclick=()=>{stopListening();R.pi--;renderRead();};
+  $('#bNext').onclick=()=>{stopListening();R.pi++;renderRead();};
+  $('#fsm').onclick=()=>{settings.size=Math.max(18,settings.size-3);store.set('settings',settings);document.documentElement.style.setProperty('--fs',settings.size+'px');};
+  $('#fbig').onclick=()=>{settings.size=Math.min(56,settings.size+3);store.set('settings',settings);document.documentElement.style.setProperty('--fs',settings.size+'px');};
+  $('#strict').onchange=e=>{settings.strict=e.target.checked;store.set('settings',settings);};
+  $('#text').onclick=e=>{const s=e.target.closest('.w');if(s){const w=R.words[+s.dataset.i];wordPopup(w.n,R.doc.paras[R.pi]);}};
+  if(d.done[R.pi])setCoach('✅ You already finished this part. Read it again or go to the next part!','good');
+}
+
+function wEl(i){return document.querySelector('#text .w[data-i="'+i+'"]');}
+function markNow(){
+  document.querySelectorAll('#text .w.now').forEach(x=>x.classList.remove('now'));
+  const e=wEl(R.cur);if(e){e.classList.add('now');e.scrollIntoView({block:'center',behavior:'smooth'});}
+}
+function setCoach(msg,kind){const c=$('#coach');if(!c)return;c.textContent=msg;c.className=kind||'';}
+function clearHeard(){document.querySelectorAll('#text .w.heard').forEach(x=>x.classList.remove('heard'));}
+
+function scan(words,start){
+  let t=start,last=t>0?R.words[t-1].n:'',mismatch=false;
+  for(const w of words){
+    if(t>=R.words.length)break;
+    if(FILL.has(w))continue;
+    if(same(w,R.words[t].n)){last=R.words[t].n;t++;continue;}
+    if(same(w,last))continue;
+    mismatch=true;break;
+  }
+  return {end:t,mismatch};
+}
+function onResult(e){
+  if(!R.listening||R.hold)return;
+  for(let i=e.resultIndex;i<e.results.length;i++){
+    const r=e.results[i];
+    let best=null,bestText='';
+    for(let a=0;a<r.length;a++){
+      const ws=spokenWords(r[a].transcript);
+      const s=scan(ws,R.cur);
+      if(!best||s.end>best.end||(s.end===best.end&&!s.mismatch&&best.mismatch)){best=s;best.words=ws;bestText=r[a].transcript;}
+    }
+    $('#heard').textContent='I heard: “'+r[0].transcript.trim()+'”';
+    if(r.isFinal){
+      clearHeard();
+      const progressed=best.end>R.cur;
+      for(let k=R.cur;k<best.end;k++){
+        const el=wEl(k);if(el){el.classList.remove('now','heard');el.classList.add(R.helped.has(k)?'help':'ok');}
+      }
+      if(progressed){R.fails=0;R.cur=best.end;}
+      if(R.cur>=R.words.length){completeParagraph();return;}
+      markNow();
+      if(best.mismatch&&best.words.length){wordFail();}
+      else if(progressed)setCoach('Great! Keep going.','good');
+    }else{
+      clearHeard();
+      for(let k=R.cur;k<best.end;k++){const el=wEl(k);if(el)el.classList.add('heard');}
+    }
+  }
+}
+function wordFail(){
+  R.fails++;
+  const w=R.words[R.cur];const el=wEl(R.cur);
+  if(el){el.classList.add('bad');setTimeout(()=>el.classList.remove('bad'),600);}
+  if(R.fails>=2&&R.helped.has(R.cur)){
+    // already coached on this word once: don't leave her stuck, move on
+    setCoach('Good effort! Let’s move on to the next word.','good');
+    const e2=wEl(R.cur);if(e2){e2.classList.remove('now');e2.classList.add('help');}
+    R.cur++;R.fails=0;
+    if(R.cur>=R.words.length)completeParagraph();else markNow();
+  }
+  else if(R.fails>=2){helpWord();}
+  else setCoach('Not quite. Try the yellow word again! (try '+R.fails+' of 2)','warn');
+}
+function helpWord(){
+  const idx=R.cur,w=R.words[idx];
+  R.fails=0;R.helped.add(idx);
+  addVocab(w.n,sentenceWith(R.doc.paras[R.pi],w.n),true);
+  setCoach('Listen: “'+w.n+'”. Now you say it!','warn');
+  pauseRec();
+  say(w.n,{rate:0.7,cb:()=>setTimeout(resumeRec,250)});
+}
+function acceptWord(){
+  if(!R.listening&&R.cur>=R.words.length)return;
+  const el=wEl(R.cur);if(!el)return;
+  R.helped.add(R.cur);
+  addVocab(R.words[R.cur].n,sentenceWith(R.doc.paras[R.pi],R.words[R.cur].n),true);
+  el.classList.remove('now');el.classList.add('help');
+  R.cur++;R.fails=0;
+  if(R.cur>=R.words.length)completeParagraph();else markNow();
+}
+function completeParagraph(){
+  stopListening();
+  const d=R.doc;d.done[R.pi]=true;saveDocs();
+  const n=R.words.length,h=R.helped.size;
+  stats.xp+=n;saveStats();
+  const last=d.done.every(Boolean);
+  setCoach('🎉 Part complete! You read '+n+' words'+(h?' ('+h+' needed help — they are saved in My Words)':' with no help')+'.'+(last?' You finished the whole reading! Try Word Quest next.':''),'good');
+  const nx=$('#bNext');if(nx&&R.pi<d.paras.length-1)nx.disabled=false;
+  const bs=$('#bStart');if(bs)bs.textContent='🎤 Read again';
+}
+function startRec(){
+  if(!SR)return;
+  if(rec){rec.onend=null;rec.onresult=null;rec.onerror=null;try{rec.abort();}catch(e){}}
+  rec=new SR();rec.lang='en-US';rec.continuous=true;rec.interimResults=true;rec.maxAlternatives=3;
+  rec.onresult=onResult;
+  rec.onerror=ev=>{
+    if(ev.error==='not-allowed'||ev.error==='service-not-allowed'){stopListening();setCoach('The microphone is blocked. Allow the microphone for this page in your browser, then try again.','warn');}
+  };
+  rec.onend=()=>{if(R.listening&&!R.hold){clearTimeout(recTimer);recTimer=setTimeout(startRec,250);}};
+  try{rec.start();}catch(e){}
+}
+function pauseRec(){R.hold=true;if(rec){try{rec.abort();}catch(e){}}}
+function resumeRec(){R.hold=false;if(R.listening)startRec();}
+function startListening(){
+  if(!SR)return;
+  stopSpeech();clearModel();
+  if(R.doc.done[R.pi]&&R.cur>=R.words.length)return;
+  R.listening=true;R.hold=false;
+  const b=$('#bStart');if(b){b.textContent='⏹ Stop';b.classList.remove('green');b.classList.add('red');}
+  setCoach('I am listening. Read the yellow word out loud!');
+  startRec();
+}
+function stopListening(){
+  R.listening=false;R.hold=false;clearTimeout(recTimer);
+  if(rec){rec.onend=null;rec.onresult=null;try{rec.abort();}catch(e){}rec=null;}
+  const b=$('#bStart');if(b){b.textContent='🎤 Start reading';b.classList.add('green');b.classList.remove('red');}
+}
+function clearModel(){document.querySelectorAll('#text .w.model').forEach(x=>x.classList.remove('model'));}
+function modelRead(){
+  stopListening();clearModel();
+  let text='';const offs=[];
+  R.words.forEach(w=>{offs.push(text.length);text+=w.t+' ';});
+  const u=say(text,{rate:0.9,cb:clearModel});
+  if(u)u.onboundary=ev=>{
+    if(ev.name&&ev.name!=='word')return;
+    let k=0;for(let i=0;i<offs.length;i++){if(offs[i]<=ev.charIndex)k=i;}
+    clearModel();const el=wEl(k);if(el)el.classList.add('model');
+  };
+}
+
+/* ---------- word popup ---------- */
+async function wordPopup(w,ctxPar){
+  const dlg=$('#dlg');
+  dlg.innerHTML='<p>Looking up “'+esc(w)+'”…</p>';
+  if(!dlg.open)dlg.showModal();
+  const d=await define(w);
+  const ctx=ctxPar?sentenceWith(ctxPar,w):'';
+  const have=!!vocab[w];
+  let h=`<h2>${esc(w)} <span class="muted" style="font-size:18px">${esc(d?d.phonetic:'')}</span></h2>`;
+  if(d){
+    d.meanings.forEach(m=>{h+=`<div class="def"><span class="pos">${esc(m.pos)}</span><br>`+m.defs.map(x=>'• '+esc(x.def)+(x.ex?'<br><span class="muted">“'+esc(x.ex)+'”</span>':'')).join('<br>')+'</div>';});
+  }else h+='<p>I could not find this word in the dictionary (check your internet connection).</p>';
+  if(ctx)h+='<p class="muted">From your reading: “'+esc(ctx)+'”</p>';
+  h+=`<div class="row" style="margin-top:12px"><button class="b alt" id="dHear">🔊 Hear it</button><button class="b green" id="dAdd">${have?'✔ In My Words':'➕ Add to My Words'}</button><button class="b alt" id="dClose">Close</button></div>`;
+  dlg.innerHTML=h;
+  $('#dHear').onclick=()=>say(w,{rate:0.75});
+  $('#dClose').onclick=()=>dlg.close();
+  $('#dAdd').onclick=async()=>{await addVocab(w,ctx,false);$('#dAdd').textContent='✔ In My Words';toast('Added “'+w+'”');};
+}
+
+/* ---------- MY WORDS ---------- */
+function renderWords(){
+  const el=$('#tab-words');
+  const list=Object.values(vocab).sort((a,b)=>a.mastery-b.mastery||b.added-a.added);
+  el.innerHTML=`
+    <div class="card"><h2>🧠 My Words (${list.length})</h2>
+      <p class="muted">Words you tap while reading or need help with land here. Add your own too!</p>
+      <div class="row"><input type="text" id="newWord" placeholder="Type a new word…" style="max-width:320px"><button class="b" id="addW">➕ Add</button><button class="b green" id="goPlay">🎮 Practice</button></div>
+    </div>
+    <div class="grid">${list.map(v=>`
+      <div class="wc"><h3>${esc(v.w)} <button class="b alt" data-hear="${esc(v.w)}" style="padding:4px 10px">🔊</button></h3>
+      <div class="muted">${esc(v.phonetic||'')} <span class="pos">${esc(v.pos||'')}</span></div>
+      <p>${esc(v.def||'Looking for a meaning… tap the word in a reading to see it.')}</p>
+      ${v.ctx?'<p class="muted">“'+esc(v.ctx)+'”</p>':''}
+      <div class="row" style="justify-content:space-between"><span class="dots">${'●'.repeat(v.mastery)}${'○'.repeat(5-v.mastery)}</span><button class="b red" data-del="${esc(v.w)}" style="padding:4px 10px">Remove</button></div></div>`).join('')||'<p class="muted">No words yet. Tap a word in Read to start!</p>'}</div>`;
+  $('#goPlay').onclick=()=>show('play');
+  $('#addW').onclick=async()=>{const w=$('#newWord').value.trim().toLowerCase();if(!/^[a-z'-]+$/.test(w)){toast('Type one word');return;}await addVocab(w,'',false);renderWords();};
+  el.onclick=e=>{
+    const h=e.target.closest('[data-hear]');if(h)say(h.dataset.hear,{rate:0.75});
+    const d=e.target.closest('[data-del]');if(d){delete vocab[d.dataset.del];saveVocab();renderWords();}
+  };
+}
+
+/* ---------- WORD QUEST ---------- */
+const FALLBACK=[{w:'journey',def:'a long trip from one place to another'},{w:'ancient',def:'very, very old'},{w:'brave',def:'ready to face danger without fear'},{w:'curious',def:'eager to learn or know something'},{w:'habitat',def:'the natural home of an animal or plant'},{w:'invent',def:'to make something new for the first time'},{w:'fragile',def:'easily broken'},{w:'gather',def:'to bring things together'},{w:'mystery',def:'something hard to explain or understand'},{w:'tremble',def:'to shake a little, often from fear or cold'},{w:'honest',def:'telling the truth'},{w:'survive',def:'to stay alive'},{w:'enormous',def:'extremely big'},{w:'scatter',def:'to throw or spread things in many directions'},{w:'predict',def:'to say what will happen in the future'},{w:'protect',def:'to keep safe from harm'}];
+const G={q:[],i:0,score:0,streak:0,ok:0,missed:[],ans:false};
+let sayRec=null;
+function stopSay(){if(sayRec){sayRec.onresult=null;sayRec.onend=null;sayRec.onerror=null;try{sayRec.abort();}catch(e){}sayRec=null;}}
+function renderPlay(){
+  const el=$('#tab-play');
+  const n=Object.keys(vocab).length;
+  el.innerHTML=`<div class="card"><h2>🎮 Word Quest</h2>
+   <p class="big">${n?'You have <b>'+n+'</b> word'+(n>1?'s':'')+' to practice.':'You have no words yet. Read a part first, then come back!'}</p>
+   <p class="muted">Match meanings, listen and pick the spelling, fill in the blank${SR?', and say the word out loud':''}. Tricky words come back more often.</p>
+   <button class="b green" id="go" ${n?'':'disabled'}>▶ Play</button></div><div id="game"></div>`;
+  $('#go').onclick=startGame;
+}
+function pickWeighted(pool,avoid){
+  const ws=pool.map(v=>(v.w===avoid&&pool.length>1)?0:(6-v.mastery));
+  let r=Math.random()*ws.reduce((a,b)=>a+b,0);
+  for(let i=0;i<pool.length;i++){r-=ws[i];if(r<=0)return pool[i];}
+  return pool[0];
+}
+function startGame(){
+  const pool=Object.values(vocab);
+  const n=Math.min(10,Math.max(5,pool.length*2));
+  G.q=[];G.i=0;G.score=0;G.streak=0;G.ok=0;G.missed=[];
+  let prev='';
+  for(let k=0;k<n;k++){
+    const v=pickWeighted(pool,prev);prev=v.w;
+    const types=['hear'];
+    if(v.def){types.push('def','w2d');}
+    const sent=v.ctx||v.ex;
+    if(sent&&new RegExp('\\b'+escRe(v.w)+'\\b','i').test(sent))types.push('blank');
+    if(SR&&k%4===3)types.push('say','say');
+    G.q.push({v,type:types[Math.floor(Math.random()*types.length)]});
+  }
+  $('#go').classList.add('hide');
+  nextQ();
+}
+function wordOptions(v){
+  const others=shuffle(Object.values(vocab).filter(x=>x.w!==v.w)).map(x=>x.w);
+  const fb=shuffle(FALLBACK.map(x=>x.w).filter(x=>x!==v.w&&!others.includes(x)));
+  return shuffle([v.w].concat(others.concat(fb).slice(0,3)));
+}
+function defOptions(v){
+  const others=shuffle(Object.values(vocab).filter(x=>x.w!==v.w&&x.def)).map(x=>x.def);
+  const fb=shuffle(FALLBACK.map(x=>x.def));
+  return shuffle([v.def].concat(others.concat(fb).slice(0,3)));
+}
+function nextQ(){
+  stopSay();
+  const g=$('#game');
+  if(G.i>=G.q.length){
+    const pct=G.ok/G.q.length,stars=pct>=.9?3:pct>=.6?2:1;
+    g.innerHTML=`<div class="card"><h2>🏁 Quest complete!</h2><p class="big">${'⭐'.repeat(stars)}<br>You got <b>${G.ok}</b> of ${G.q.length}. Score: <b>${G.score}</b></p>
+    ${G.missed.length?'<p><b>Words to review:</b></p>'+G.missed.map(v=>`<div class="def"><b>${esc(v.w)}</b> — ${esc(v.def)}</div>`).join(''):'<p>🎉 No misses!</p>'}
+    <div class="row"><button class="b green" id="again">▶ Play again</button><button class="b alt" id="back">Back to reading</button></div></div>`;
+    $('#again').onclick=startGame;$('#back').onclick=()=>show('read');
+    return;
+  }
+  G.ans=false;
+  const q=G.q[G.i],v=q.v;
+  const head=`<div class="card"><div class="row" style="justify-content:space-between"><b>Question ${G.i+1} of ${G.q.length}</b><span>🔥 Streak ${G.streak} · Score ${G.score}</span></div><div class="bar" style="margin:8px 0"><i style="width:${G.i/G.q.length*100}%"></i></div>`;
+  let body='';
+  if(q.type==='def'){body=`<p class="big">Which word means:<br><b>${esc(v.def)}</b></p><div id="opts">${wordOptions(v).map(o=>`<button class="opt" data-a="${esc(o)}">${esc(o)}</button>`).join('')}</div>`;q.ans=v.w;}
+  else if(q.type==='w2d'){body=`<p class="big">What does <b>${esc(v.w)}</b> mean? <button class="b alt" id="hear">🔊</button></p><div id="opts">${defOptions(v).map(o=>`<button class="opt" data-a="${esc(o)}">${esc(o)}</button>`).join('')}</div>`;q.ans=v.def;}
+  else if(q.type==='hear'){body=`<p class="big">Listen, then pick the word you hear. <button class="b" id="hear">🔊 Play</button></p><div id="opts">${wordOptions(v).map(o=>`<button class="opt" data-a="${esc(o)}">${esc(o)}</button>`).join('')}</div>`;q.ans=v.w;}
+  else if(q.type==='blank'){
+    const s=(v.ctx||v.ex).replace(new RegExp('\\b'+escRe(v.w)+'\\b','i'),'_____');
+    body=`<p class="big">Fill in the blank:<br><b>${esc(s)}</b></p><div id="opts">${wordOptions(v).map(o=>`<button class="opt" data-a="${esc(o)}">${esc(o)}</button>`).join('')}</div>`;q.ans=v.w;
+  }else{
+    body=`<p class="big">🎤 Say this word out loud!<br><span class="muted">${v.def?esc(v.def):'Tap 🔊 to hear it first.'}</span></p><div class="row"><button class="b alt" id="hear">🔊 Hear it</button><button class="b green" id="mic">🎤 Tap and say it</button></div><p id="heardq" class="muted"></p>`;q.ans=v.w;q.tries=0;
+  }
+  g.innerHTML=head+body+'<div id="fb"></div></div>';
+  const hb=$('#hear');if(hb)hb.onclick=()=>say(v.w,{rate:0.75});
+  if(q.type==='hear')say(v.w,{rate:0.75});
+  const opts=$('#opts');
+  if(opts)opts.onclick=e=>{const b=e.target.closest('.opt');if(b&&!G.ans)answer(b.dataset.a===q.ans,b);};
+  const mic=$('#mic');if(mic)mic.onclick=()=>sayChallenge(q);
+}
+function sayChallenge(q){
+  stopSay();stopSpeech();
+  sayRec=new SR();sayRec.lang='en-US';sayRec.interimResults=false;sayRec.maxAlternatives=5;
+  $('#heardq').textContent='Listening…';
+  sayRec.onresult=e=>{
+    const r=e.results[0];let ok=false,txt=r[0].transcript;
+    for(let a=0;a<r.length;a++){if(spokenWords(r[a].transcript).some(w=>same(w,q.v.w))){ok=true;break;}}
+    $('#heardq').textContent='I heard: “'+txt+'”';
+    if(ok)answer(true);
+    else{q.tries++;if(q.tries>=2){say(q.v.w,{rate:0.7});answer(false);}else $('#heardq').textContent+=' — try once more!';}
+  };
+  sayRec.onerror=()=>{$('#heardq').textContent='I could not hear you. Tap the mic and try again.';};
+  try{sayRec.start();}catch(e){}
+}
+function beep(f,d){try{const c=new (window.AudioContext||window.webkitAudioContext)(),o=c.createOscillator(),g=c.createGain();o.frequency.value=f;g.gain.value=.08;o.connect(g);g.connect(c.destination);o.start();setTimeout(()=>{o.stop();c.close();},d);}catch(e){}}
+function answer(ok,btn){
+  if(G.ans)return;G.ans=true;stopSay();
+  const q=G.q[G.i],v=q.v;
+  const e=vocab[v.w];
+  if(ok){G.ok++;G.streak++;const pts=10+Math.min(G.streak*2,10);G.score+=pts;stats.xp+=pts;e.mastery=Math.min(5,e.mastery+1);beep(660,150);}
+  else{G.streak=0;G.missed.push(v);e.mastery=Math.max(0,e.mastery-1);beep(220,250);}
+  saveVocab();saveStats();
+  document.querySelectorAll('#opts .opt').forEach(b=>{b.disabled=true;if(b.dataset.a===q.ans)b.classList.add('right');else if(b===btn)b.classList.add('wrong');});
+  $('#fb').innerHTML=`<div id="coach" class="${ok?'good':'warn'}">${ok?'✅ Yes! ':'The answer is “'+esc(v.w)+'”. '}${esc(v.def||'')}</div><button class="b" id="nx">Next →</button>`;
+  if(!ok&&q.type!=='say')say(v.w,{rate:0.75});
+  $('#nx').onclick=()=>{G.i++;nextQ();};
+}
+
+/* ---------- LIBRARY ---------- */
+function renderLib(){
+  const el=$('#tab-lib');
+  el.innerHTML=`
+  <div class="card"><h2>➕ Add a reading</h2>
+    <p>Choose a PDF (or .txt file). The app cuts it into short parts so each one is easy to read aloud.</p>
+    <div class="row"><input type="file" id="file" accept=".pdf,.txt,application/pdf,text/plain">
+      <select id="size" style="max-width:240px"><option value="30">Short parts (~30 words)</option><option value="50" selected>Medium parts (~50 words)</option><option value="80">Long parts (~80 words)</option></select></div>
+    <p id="status" class="muted"></p>
+    <details><summary><b>Or paste text</b></summary>
+      <input type="text" id="ptitle" placeholder="Title" style="margin:8px 0"><textarea id="ptext" rows="5" placeholder="Paste text here…"></textarea>
+      <button class="b" id="pbtn" style="margin-top:8px">Add text</button></details>
+  </div>
+  ${docs.map(d=>{const n=d.done.filter(Boolean).length;return `<div class="card"><div class="row" style="justify-content:space-between"><div><b>${esc(d.title)}</b><br><span class="muted">${n} of ${d.paras.length} parts finished</span></div>
+   <div class="row"><button class="b" data-open="${esc(d.id)}">Open</button><button class="b red" data-rm="${esc(d.id)}">Delete</button></div></div><div class="bar" style="margin-top:8px"><i style="width:${n/d.paras.length*100}%"></i></div></div>`;}).join('')}`;
+  $('#file').onchange=handleFile;
+  $('#pbtn').onclick=()=>{const t=$('#ptext').value.trim();if(!t){toast('Paste some text first');return;}addDoc($('#ptitle').value.trim()||'My text',t.split(/\n\s*\n/),+$('#size').value);};
+  el.onclick=e=>{
+    const o=e.target.closest('[data-open]');if(o){R.doc=null;openDoc(o.dataset.open);show('read');}
+    const r=e.target.closest('[data-rm]');if(r&&confirm('Delete this reading?')){docs=docs.filter(d=>d.id!==r.dataset.rm);saveDocs();if(R.doc&&R.doc.id===r.dataset.rm)R.doc=null;renderLib();}
+  };
+}
+function chunk(paras,max){
+  const out=[];let buf=[],cnt=0;const min=Math.round(max*0.5);
+  const flush=()=>{if(buf.length){out.push(buf.join(' ').trim());buf=[];cnt=0;}};
+  for(const p of paras){
+    const ss=p.replace(/\s+/g,' ').trim().match(/[^.!?]+[.!?]*["')\]”’]*\s*/g)||[];
+    for(const s of ss){
+      const n=s.trim().split(/\s+/).filter(Boolean).length;if(!n)continue;
+      if(cnt+n>max&&cnt>=Math.min(min,10))flush();
+      buf.push(s.trim());cnt+=n;
+    }
+    if(cnt>=min)flush();
+  }
+  flush();
+  return out.filter(x=>x.split(/\s+/).length>=3);
+}
+function addDoc(title,paras,max){
+  const ch=chunk(paras,max);
+  if(!ch.length){$('#status')&&($('#status').textContent='I could not find readable text. Scanned PDFs (pictures of pages) do not work yet.');return;}
+  const d={id:'d'+Date.now(),title,paras:ch,done:ch.map(()=>false)};
+  docs.push(d);saveDocs();toast('Added “'+title+'” ('+ch.length+' parts)');
+  R.doc=null;openDoc(d.id,0);show('read');
+}
+let pdfReady=null;
+function loadPdfJs(){
+  if(pdfReady)return pdfReady;
+  pdfReady=new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload=async()=>{
+      try{
+        const t=await (await fetch('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js')).text();
+        pdfjsLib.GlobalWorkerOptions.workerSrc=URL.createObjectURL(new Blob([t],{type:'text/javascript'}));
+        res();
+      }catch(e){rej(e);}
+    };
+    s.onerror=()=>rej(new Error('Could not load PDF reader (internet needed).'));
+    document.head.appendChild(s);
+  });
+  return pdfReady;
+}
+async function pdfParas(file,onProg){
+  await loadPdfJs();
+  const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+  const paras=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    onProg('Reading page '+p+' of '+pdf.numPages+'…');
+    const tc=await (await pdf.getPage(p)).getTextContent();
+    const lines=[];let cur=null;
+    for(const it of tc.items){
+      if(!it.str&&!it.hasEOL)continue;
+      const y=it.transform[5];
+      if(cur&&Math.abs(cur.y-y)<2.5)cur.t+=it.str;else{cur={y,t:it.str};lines.push(cur);}
+    }
+    const L=lines.filter(l=>l.t.trim());
+    const gaps=[];for(let i=1;i<L.length;i++){const g=L[i-1].y-L[i].y;if(g>0)gaps.push(g);}
+    gaps.sort((a,b)=>a-b);const med=gaps.length?gaps[Math.floor(gaps.length/2)]:12;
+    let curP='';
+    const push=()=>{const t=curP.replace(/\s+/g,' ').trim();if(t.split(' ').length>=3&&!/^\d+$/.test(t))paras.push(t);curP='';};
+    for(let i=0;i<L.length;i++){
+      const gap=i>0?L[i-1].y-L[i].y:0;
+      if(i>0&&(gap>med*1.6||gap<0))push();
+      const t=L[i].t.trim();
+      if(/[a-z]-$/i.test(curP)&&/^[a-z]/.test(t))curP=curP.slice(0,-1)+t;else curP+=(curP?' ':'')+t;
+    }
+    push();
+  }
+  return paras;
+}
+async function handleFile(e){
+  const f=e.target.files[0];if(!f)return;
+  const st=$('#status');const max=+$('#size').value;
+  const title=f.name.replace(/\.(pdf|txt)$/i,'');
+  try{
+    let paras;
+    if(/\.txt$/i.test(f.name)||f.type==='text/plain')paras=(await f.text()).split(/\n\s*\n/);
+    else paras=await pdfParas(f,m=>st.textContent=m);
+    addDoc(title,paras,max);
+  }catch(err){st.textContent='Sorry, that file could not be opened. '+(err&&err.message||'');}
+}
+
+/* ---------- init ---------- */
+saveStats();
+show('read');
+})();
+</script>
+</body>
+</html>
