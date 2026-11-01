@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Word Explorer</title>
 <style>
-:root{--bg:#f6f4ee;--card:#fff;--ink:#22303c;--muted:#5d6b78;--brand:#2f6fed;--brand2:#e8f0ff;--good:#1f9d63;--goodbg:#dff5ea;--bad:#d64545;--badbg:#fde6e6;--warn:#b86e00;--warnbg:#fff1d6;--line:#e1ddd0;--fs:30px;--lh:1.9}
+:root{--bg:#f6f4ee;--card:#fff;--ink:#22303c;--muted:#5d6b78;--brand:#2f6fed;--brand2:#e8f0ff;--good:#1f9d63;--goodbg:#dff5ea;--bad:#d64545;--badbg:#fde6e6;--warn:#b86e00;--warnbg:#fff1d6;--line:#e1ddd0;--fs:22px;--lh:1.7}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:"Atkinson Hyperlegible","Trebuchet MS",Verdana,system-ui,sans-serif;font-size:18px}
 header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 18px;background:#fff;border-bottom:2px solid var(--line);position:sticky;top:0;z-index:5}
@@ -58,7 +58,6 @@ dialog::backdrop{background:#0006}
 .hide{display:none!important}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#22303c;color:#fff;padding:10px 18px;border-radius:99px;opacity:0;transition:.3s;pointer-events:none;z-index:20}
 #toast.on{opacity:1}
-footer{max-width:980px;margin:0 auto;padding:0 18px 18px;text-align:center;color:var(--muted);font-size:14px}
 </style>
 </head>
 <body>
@@ -78,12 +77,10 @@ footer{max-width:980px;margin:0 auto;padding:0 18px 18px;text-align:center;color
   <section id="tab-play" class="hide"></section>
   <section id="tab-lib" class="hide"></section>
 </main>
-<footer id="update-time"></footer>
 <dialog id="dlg"></dialog>
 <div id="toast"></div>
 
 <script>
-document.querySelector('#update-time').textContent='Last code update: '+new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'short'}).format(new Date(document.lastModified));
 (function(){
 'use strict';
 const $=s=>document.querySelector(s);
@@ -98,7 +95,7 @@ const store={
 };
 let docs=store.get('docs',[]);
 let vocab=store.get('vocab',{});
-let settings=Object.assign({size:30,spacing:1.9,strict:false},store.get('settings',{}));
+let settings=Object.assign({size:22,spacing:1.7,strict:false},store.get('settings',{}));
 let stats=Object.assign({xp:0},store.get('stats',{}));
 let lastDoc=store.get('lastDoc',null);
 const saveDocs=()=>store.set('docs',docs), saveVocab=()=>store.set('vocab',vocab), saveStats=()=>{store.set('stats',stats);$('#xp').textContent='⭐ '+stats.xp;};
@@ -289,9 +286,9 @@ function renderRead(){
   $('#bRestart').onclick=()=>{stopListening();stopSpeech();renderRead();};
   $('#bAccept').onclick=acceptWord;
   $('#bPrev').onclick=()=>{stopListening();R.pi--;renderRead();};
-  $('#bNext').onclick=()=>{stopListening();R.pi++;renderRead();};
-  $('#fsm').onclick=()=>{settings.size=Math.max(18,settings.size-3);store.set('settings',settings);document.documentElement.style.setProperty('--fs',settings.size+'px');};
-  $('#fbig').onclick=()=>{settings.size=Math.min(56,settings.size+3);store.set('settings',settings);document.documentElement.style.setProperty('--fs',settings.size+'px');};
+  $('#bNext').onclick=()=>{stopListening();R.pi++;renderRead();startListening();};
+  $('#fsm').onclick=()=>{settings.size=Math.max(14,settings.size-2);store.set('settings',settings);document.documentElement.style.setProperty('--fs',settings.size+'px');};
+  $('#fbig').onclick=()=>{settings.size=Math.min(56,settings.size+2);store.set('settings',settings);document.documentElement.style.setProperty('--fs',settings.size+'px');};
   $('#strict').onchange=e=>{settings.strict=e.target.checked;store.set('settings',settings);};
   $('#text').onclick=e=>{const s=e.target.closest('.w');if(s){const w=R.words[+s.dataset.i];wordPopup(w.n,R.doc.paras[R.pi]);}};
   if(d.done[R.pi])setCoach('✅ You already finished this part. Read it again or go to the next part!','good');
@@ -348,15 +345,14 @@ function wordFail(){
   R.fails++;
   const w=R.words[R.cur];const el=wEl(R.cur);
   if(el){el.classList.add('bad');setTimeout(()=>el.classList.remove('bad'),600);}
-  if(R.fails>=2&&R.helped.has(R.cur)){
+  if(R.helped.has(R.cur)){
     // already coached on this word once: don't leave her stuck, move on
     setCoach('Good effort! Let’s move on to the next word.','good');
     const e2=wEl(R.cur);if(e2){e2.classList.remove('now');e2.classList.add('help');}
     R.cur++;R.fails=0;
     if(R.cur>=R.words.length)completeParagraph();else markNow();
   }
-  else if(R.fails>=2){helpWord();}
-  else setCoach('Not quite. Try the yellow word again! (try '+R.fails+' of 2)','warn');
+  else{helpWord();}
 }
 function helpWord(){
   const idx=R.cur,w=R.words[idx];
@@ -581,7 +577,7 @@ function renderLib(){
   <div class="card"><h2>➕ Add a reading</h2>
     <p>Choose a PDF (or .txt file). The app cuts it into short parts so each one is easy to read aloud.</p>
     <div class="row"><input type="file" id="file" accept=".pdf,.txt,application/pdf,text/plain">
-      <select id="size" style="max-width:240px"><option value="30">Short parts (~30 words)</option><option value="50" selected>Medium parts (~50 words)</option><option value="80">Long parts (~80 words)</option></select></div>
+      <select id="size" style="max-width:240px"><option value="50">Short pages (up to 50 words)</option><option value="100">Medium pages (up to 100 words)</option><option value="150" selected>Long pages (up to 150 words)</option></select></div>
     <p id="status" class="muted"></p>
     <details><summary><b>Or paste text</b></summary>
       <input type="text" id="ptitle" placeholder="Title" style="margin:8px 0"><textarea id="ptext" rows="5" placeholder="Paste text here…"></textarea>
