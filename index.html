@@ -581,7 +581,7 @@ function renderLib(){
   <div class="card"><h2>➕ Add a reading</h2>
     <p>Choose a PDF (or .txt file). The app cuts it into short parts so each one is easy to read aloud.</p>
     <div class="row"><input type="file" id="file" accept=".pdf,.txt,application/pdf,text/plain">
-      <select id="size" style="max-width:240px"><option value="30">Short parts (~30 words)</option><option value="50" selected>Medium parts (~50 words)</option><option value="80">Long parts (~80 words)</option></select></div>
+      <select id="size" style="max-width:240px"><option value="30">Short parts (~30 words)</option><option value="50">Medium parts (~50 words)</option><option value="80">Long parts (~80 words)</option><option value="150" selected>Extra long parts (up to 150 words)</option></select></div>
     <p id="status" class="muted"></p>
     <details><summary><b>Or paste text</b></summary>
       <input type="text" id="ptitle" placeholder="Title" style="margin:8px 0"><textarea id="ptext" rows="5" placeholder="Paste text here…"></textarea>
@@ -602,8 +602,13 @@ function chunk(paras,max){
   for(const p of paras){
     const ss=p.replace(/\s+/g,' ').trim().match(/[^.!?]+[.!?]*["')\]”’]*\s*/g)||[];
     for(const s of ss){
-      const n=s.trim().split(/\s+/).filter(Boolean).length;if(!n)continue;
-      if(cnt+n>max&&cnt>=Math.min(min,10))flush();
+      const words=s.trim().split(/\s+/).filter(Boolean),n=words.length;if(!n)continue;
+      if(n>max){
+        flush();
+        for(let i=0;i<n;i+=max)out.push(words.slice(i,i+max).join(' '));
+        continue;
+      }
+      if(cnt+n>max)flush();
       buf.push(s.trim());cnt+=n;
     }
     if(cnt>=min)flush();
