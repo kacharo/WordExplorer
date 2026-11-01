@@ -58,6 +58,7 @@ dialog::backdrop{background:#0006}
 .hide{display:none!important}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#22303c;color:#fff;padding:10px 18px;border-radius:99px;opacity:0;transition:.3s;pointer-events:none;z-index:20}
 #toast.on{opacity:1}
+footer{max-width:980px;margin:0 auto;padding:0 18px 18px;text-align:center;color:var(--muted);font-size:14px}
 </style>
 </head>
 <body>
@@ -77,10 +78,12 @@ dialog::backdrop{background:#0006}
   <section id="tab-play" class="hide"></section>
   <section id="tab-lib" class="hide"></section>
 </main>
+<footer id="update-time"></footer>
 <dialog id="dlg"></dialog>
 <div id="toast"></div>
 
 <script>
+document.querySelector('#update-time').textContent='Last code update: '+new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'short'}).format(new Date(document.lastModified));
 (function(){
 'use strict';
 const $=s=>document.querySelector(s);
