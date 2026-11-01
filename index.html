@@ -436,22 +436,18 @@ function judge(al){
     if(R.acc.length)evaluate();
     return;
   }
-  R.attempt++;
+  // Wrong or skipped words: flag them red, save them to My Words, and keep going.
+  R.attempt=0;
   bad.forEach(i=>R.helped.add(i));
   paint(al,k,true);
-  R.acc=[];
+  R.acc=SR?leftover:[];
   const words=bad.map(i=>R.words[i].n).filter((w,i,a)=>a.indexOf(w)===i);
-  if(R.attempt>=2){
-    bad.forEach(i=>{const el=wEl(i);if(el){el.classList.remove('bad');el.classList.add('help');}});
-    R.attempt=0;R.si++;
-    setCoach('Good effort! The tricky words are saved in My Words. On to the next sentence.','good');
-    if(R.si>=R.sents.length){completeParagraph();return;}
-    markNow();return;
-  }
   words.forEach(w=>addVocab(w,sentenceWith(R.doc.paras[R.pi],w),true));
-  setCoach('Check the red words: '+words.slice(0,5).join(', ')+'. Listen, then read the whole sentence again!'+(SR?'':' (Use the keyboard microphone again.)'),'warn');
-  pauseRec();
-  speakList(words.slice(0,5),()=>setTimeout(resumeRec,300));
+  R.si++;
+  setCoach('Saved to My Words to practice: '+words.slice(0,6).join(', ')+(words.length>6?'…':'')+'. Keep going!','warn');
+  if(R.si>=R.sents.length){completeParagraph();return;}
+  markNow();
+  if(R.acc.length)evaluate();
 }
 function acceptSentence(){
   if(R.si>=R.sents.length)return;
@@ -467,7 +463,7 @@ function completeParagraph(){
   const n=R.words.length,h=R.helped.size;
   stats.xp+=n;saveStats();
   const last=d.done.every(Boolean);
-  setCoach('🎉 Part complete! You read '+n+' words'+(h?' ('+h+' needed help — they are saved in My Words)':' with no help')+'.'+(last?' You finished the whole reading! Try Word Quest next.':''),'good');
+  setCoach('🎉 Part complete! You read '+n+' words'+(h?' ('+h+' tricky word'+(h>1?'s are':' is')+' marked red and saved in My Words to practice)':' with no mistakes')+'.'+(last?' You finished the whole reading! Try Word Quest next.':''),'good');
   const nx=$('#bNext');if(nx&&R.pi<d.paras.length-1)nx.disabled=false;
   const bs=$('#bStart');if(bs)bs.textContent='🎤 Read again';
 }
@@ -538,15 +534,16 @@ function renderWords(){
   el.innerHTML=`
     <div class="card"><h2>🧠 My Words (${list.length})</h2>
       <p class="muted">Words you tap while reading or need help with land here. Add your own too!</p>
-      <div class="row"><input type="text" id="newWord" placeholder="Type a new word…" style="max-width:320px"><button class="b" id="addW">➕ Add</button><button class="b green" id="goPlay">🎮 Practice</button></div>
+      <div class="row"><input type="text" id="newWord" placeholder="Type a new word…" style="max-width:320px"><button class="b" id="addW">➕ Add</button><button class="b green" id="goPlay">🎮 Practice</button><button class="b red" id="delAll" ${list.length?'':'disabled'}>🗑 Delete all words</button></div>
     </div>
     <div class="grid">${list.map(v=>`
       <div class="wc"><h3>${esc(v.w)} <button class="b alt" data-hear="${esc(v.w)}" style="padding:4px 10px">🔊</button></h3>
       <div class="muted">${esc(v.phonetic||'')} <span class="pos">${esc(v.pos||'')}</span></div>
       <p>${esc(v.def||'Looking for a meaning… tap the word in a reading to see it.')}</p>
       ${v.ctx?'<p class="muted">“'+esc(v.ctx)+'”</p>':''}
-      <div class="row" style="justify-content:space-between"><span class="dots">${'●'.repeat(v.mastery)}${'○'.repeat(5-v.mastery)}</span><button class="b red" data-del="${esc(v.w)}" style="padding:4px 10px">Remove</button></div></div>`).join('')||'<p class="muted">No words yet. Tap a word in Read to start!</p>'}</div>`;
+      <div class="row" style="justify-content:space-between"><span class="dots">${'●'.repeat(v.mastery)}${'○'.repeat(5-v.mastery)}</span>${v.helped?'<span class="muted">⚠ missed '+v.helped+'×</span>':''}</div></div>`).join('')||'<p class="muted">No words yet. Tap a word in Read to start!</p>'}</div>`;
   $('#goPlay').onclick=()=>show('play');
+  $('#delAll').onclick=()=>{if(confirm('Delete all '+list.length+' words? This cannot be undone.')){vocab={};saveVocab();renderWords();}};
   $('#addW').onclick=async()=>{const w=$('#newWord').value.trim().toLowerCase();if(!/^[a-z'-]+$/.test(w)){toast('Type one word');return;}await addVocab(w,'',false);renderWords();};
   el.onclick=e=>{
     const h=e.target.closest('[data-hear]');if(h)say(h.dataset.hear,{rate:0.75});
