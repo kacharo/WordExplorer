@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Word Explorer</title>
 <style>
-:root{--bg:#f6f4ee;--card:#fff;--ink:#22303c;--muted:#5d6b78;--brand:#2f6fed;--brand2:#e8f0ff;--good:#1f9d63;--goodbg:#dff5ea;--bad:#d64545;--badbg:#fde6e6;--warn:#b86e00;--warnbg:#fff1d6;--line:#e1ddd0;--fs:30px;--lh:1.9}
+:root{--bg:#f6f4ee;--card:#fff;--ink:#22303c;--muted:#5d6b78;--brand:#2f6fed;--brand2:#e8f0ff;--good:#1f9d63;--goodbg:#dff5ea;--bad:#d64545;--badbg:#fde6e6;--warn:#b86e00;--warnbg:#fff1d6;--line:#e1ddd0;--fs:22px;--lh:1.7}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:"Atkinson Hyperlegible","Trebuchet MS",Verdana,system-ui,sans-serif;font-size:18px}
 header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 18px;background:#fff;border-bottom:2px solid var(--line);position:sticky;top:0;z-index:5}
@@ -29,11 +29,11 @@ button.b:disabled{opacity:.4;cursor:not-allowed}
 #text{font-size:var(--fs);line-height:var(--lh);padding:10px 4px}
 .w{border-radius:8px;padding:0 3px;cursor:pointer;transition:background .15s}
 .w:hover{background:#eef2f7}
-.w.now{background:#ffe27a;box-shadow:0 0 0 3px #ffe27a}
+.sent.now{background:#fff3b0;border-radius:10px;box-shadow:0 0 0 5px #fff3b0}
 .w.heard{background:var(--brand2)}
 .w.ok{color:var(--good)}
 .w.help{color:var(--warn);text-decoration:underline dotted}
-.w.bad{animation:shake .4s;background:var(--badbg)}
+.w.bad{color:var(--bad);background:var(--badbg);text-decoration:underline;font-weight:700}
 .w.model{background:#cfe3ff}
 @keyframes shake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
 #coach{font-size:20px;font-weight:700;padding:12px 14px;border-radius:14px;background:var(--brand2);color:var(--brand);margin:10px 0}
@@ -56,9 +56,33 @@ dialog::backdrop{background:#0006}
 .def{margin:6px 0;font-size:19px}
 .pos{font-style:italic;color:var(--muted)}
 .hide{display:none!important}
+
+html{-webkit-text-size-adjust:100%}
+body{-webkit-tap-highlight-color:transparent;touch-action:manipulation;padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);padding-bottom:env(safe-area-inset-bottom)}
+button,input,select,textarea{font-size:16px}
+textarea#dict{font-size:18px;min-height:90px;margin-top:8px}
+nav{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
+nav button{white-space:nowrap;min-height:44px}
+button.b{min-height:44px}
+@media (max-width:640px){
+  :root{--fs:20px;--lh:1.7}
+  body{font-size:16px}
+  header{padding:8px 10px;gap:6px}
+  header h1{font-size:18px;margin:0}
+  nav button{padding:8px 10px;font-size:14px}
+  #xp{font-size:14px;padding:4px 10px}
+  main{padding:10px}
+  .card{padding:12px;border-radius:14px}
+  h2{font-size:19px}
+  #coach{font-size:17px;padding:10px}
+  .row>button.b{flex:1 1 45%}
+  .opt{font-size:17px;padding:12px}
+  .big{font-size:20px}
+  .grid{grid-template-columns:1fr}
+  dialog{padding:16px;width:94%}
+}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#22303c;color:#fff;padding:10px 18px;border-radius:99px;opacity:0;transition:.3s;pointer-events:none;z-index:20}
 #toast.on{opacity:1}
-footer{max-width:980px;margin:0 auto;padding:0 18px 18px;text-align:center;color:var(--muted);font-size:14px}
 </style>
 </head>
 <body>
@@ -78,12 +102,10 @@ footer{max-width:980px;margin:0 auto;padding:0 18px 18px;text-align:center;color
   <section id="tab-play" class="hide"></section>
   <section id="tab-lib" class="hide"></section>
 </main>
-<footer id="update-time"></footer>
 <dialog id="dlg"></dialog>
 <div id="toast"></div>
 
 <script>
-document.querySelector('#update-time').textContent='Last code update: '+new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'short'}).format(new Date(document.lastModified));
 (function(){
 'use strict';
 const $=s=>document.querySelector(s);
@@ -98,7 +120,7 @@ const store={
 };
 let docs=store.get('docs',[]);
 let vocab=store.get('vocab',{});
-let settings=Object.assign({size:30,spacing:1.9,strict:false},store.get('settings',{}));
+let settings=Object.assign({size:22,spacing:1.7,strict:false},store.get('settings',{}));
 let stats=Object.assign({xp:0},store.get('stats',{}));
 let lastDoc=store.get('lastDoc',null);
 const saveDocs=()=>store.set('docs',docs), saveVocab=()=>store.set('vocab',vocab), saveStats=()=>{store.set('stats',stats);$('#xp').textContent='⭐ '+stats.xp;};
@@ -242,20 +264,29 @@ function renderRead(){
   if(!R.doc){el.innerHTML='<div class="card"><h2>No reading yet</h2><p>Go to Library and add a PDF.</p></div>';return;}
   const d=R.doc;
   const doneN=d.done.filter(Boolean).length;
-  R.words=tokenize(d.paras[R.pi]).map(x=>x);
-  const spoken=R.words.filter(w=>w.n);
-  R.cur=0;R.fails=0;R.helped=new Set();R.finished=false;
-  // build html; spoken index mapping
-  let si=0,html='';
-  R.tokens=R.words;
-  R.words=spoken;
-  R.tokens.forEach((tk,i)=>{
-    if(tk.n){html+=`<span class="w" data-i="${si}">${esc(tk.t)}</span>`;si++;}
+  const toks=tokenize(d.paras[R.pi]);
+  R.words=toks.filter(w=>w.n);
+  clearTimeout(R.pt);
+  R.fails=0;R.attempt=0;R.acc=[];R.si=0;R.helped=new Set();R.finished=false;
+  R.sents=[];
+  let sStart=0,cnt=0,wi=0,html='',open=false,sidx=0;
+  const ABBR=/^(mr|mrs|ms|dr|st|jr|sr|vs|etc|e\.g|i\.e|u\.s)\.?$/i;
+  toks.forEach((tk,i)=>{
+    if(!open){html+='<span class="sent" data-s="'+sidx+'">';open=true;}
+    if(tk.n){html+=`<span class="w" data-i="${wi}">${esc(tk.t)}</span>`;wi++;cnt++;}
     else html+=`<span>${esc(tk.t)}</span>`;
     if(!tk.join)html+=' ';
+    const last=i===toks.length-1;
+    const endS=(/[.!?]["'”’)\]]*$/.test(tk.t)&&!ABBR.test(tk.t.replace(/[^A-Za-z.]/g,'')))||(cnt>=18&&/[,;:]$/.test(tk.t))||last;
+    if(endS&&(cnt>0||last)){
+      html+='</span>';open=false;
+      if(cnt>0){R.sents.push({start:sStart,end:wi-1});sidx++;}
+      sStart=wi;cnt=0;
+    }
   });
+  if(open)html+='</span>';
   el.innerHTML=`
-    ${SR?'':'<div class="banner">🎤 Speech listening needs a recent Chrome or Safari. You can still read, listen and play.</div>'}
+    ${SR?'':'<div class="banner">🎤 This browser can’t listen live (Chrome on iPhone/iPad can’t). <b>Dictation mode</b> is on: tap the microphone key on your keyboard, read the sentence, then tap “Check sentence”. For live listening, open this page in Safari.</div>'}
     <div class="card">
       <div class="row" style="justify-content:space-between">
         <div><b>${esc(d.title)}</b> <span class="muted">· Part ${R.pi+1} of ${d.paras.length}</span></div>
@@ -268,13 +299,14 @@ function renderRead(){
     </div>
     <div class="card">
       <div id="text">${html}</div>
-      <div id="coach">Press “Start reading” and read the yellow word out loud. Tap any word to learn it.</div>
+      <div id="coach">Press “Start reading” and read the highlighted sentence out loud. Tap any word to learn it.</div>
       <div id="heard"></div>
+      ${SR?'':'<textarea id="dict" placeholder="Tap the 🎤 on your keyboard and read the highlighted sentence…" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea><div class="row" style="margin:8px 0"><button class="b green" id="dCheck">✅ Check sentence</button></div>'}
       <div class="row">
-        <button class="b green" id="bStart" ${SR?'':'disabled'}>🎤 Start reading</button>
+        ${SR?'<button class="b green" id="bStart">🎤 Start reading</button>':''}
         <button class="b alt" id="bListen">🔊 Listen first</button>
         <button class="b alt" id="bRestart">↺ Restart</button>
-        <button class="b alt" id="bAccept" title="For a grown-up: accept the current word">✔ Accept word (grown-up)</button>
+        <button class="b alt" id="bAccept" title="For a grown-up: accept the current sentence">✔ Accept sentence (grown-up)</button>
       </div>
     </div>
     <div class="row">
@@ -284,99 +316,153 @@ function renderRead(){
   document.documentElement.style.setProperty('--fs',settings.size+'px');
   document.documentElement.style.setProperty('--lh',settings.spacing);
   markNow();
-  $('#bStart').onclick=()=>R.listening?stopListening(true):startListening();
+  if($('#bStart'))$('#bStart').onclick=()=>R.listening?stopListening(true):startListening();
+  if($('#dCheck'))$('#dCheck').onclick=()=>{
+    if(R.si>=R.sents.length){renderRead();return;}
+    const ta=$('#dict'),ws=spokenWords(ta.value).filter(w=>!FILL.has(w));
+    if(!ws.length){toast('Dictate or type the sentence first');return;}
+    R.acc=ws;ta.value='';
+    $('#heard').textContent='I heard: “'+ws.join(' ')+'”';
+    judge(align(curE(),ws));
+  };
   $('#bListen').onclick=modelRead;
   $('#bRestart').onclick=()=>{stopListening();stopSpeech();renderRead();};
-  $('#bAccept').onclick=acceptWord;
+  $('#bAccept').onclick=acceptSentence;
   $('#bPrev').onclick=()=>{stopListening();R.pi--;renderRead();};
-  $('#bNext').onclick=()=>{stopListening();R.pi++;renderRead();};
-  $('#fsm').onclick=()=>{settings.size=Math.max(18,settings.size-3);store.set('settings',settings);document.documentElement.style.setProperty('--fs',settings.size+'px');};
-  $('#fbig').onclick=()=>{settings.size=Math.min(56,settings.size+3);store.set('settings',settings);document.documentElement.style.setProperty('--fs',settings.size+'px');};
+  $('#bNext').onclick=()=>{stopListening();R.pi++;renderRead();startListening();};
+  $('#fsm').onclick=()=>{settings.size=Math.max(14,settings.size-2);store.set('settings',settings);document.documentElement.style.setProperty('--fs',settings.size+'px');};
+  $('#fbig').onclick=()=>{settings.size=Math.min(56,settings.size+2);store.set('settings',settings);document.documentElement.style.setProperty('--fs',settings.size+'px');};
   $('#strict').onchange=e=>{settings.strict=e.target.checked;store.set('settings',settings);};
   $('#text').onclick=e=>{const s=e.target.closest('.w');if(s){const w=R.words[+s.dataset.i];wordPopup(w.n,R.doc.paras[R.pi]);}};
   if(d.done[R.pi])setCoach('✅ You already finished this part. Read it again or go to the next part!','good');
 }
 
 function wEl(i){return document.querySelector('#text .w[data-i="'+i+'"]');}
+function sentEl(k){return document.querySelector('#text .sent[data-s="'+k+'"]');}
 function markNow(){
-  document.querySelectorAll('#text .w.now').forEach(x=>x.classList.remove('now'));
-  const e=wEl(R.cur);if(e){e.classList.add('now');e.scrollIntoView({block:'center',behavior:'smooth'});}
+  document.querySelectorAll('#text .sent.now').forEach(x=>x.classList.remove('now'));
+  const e=sentEl(R.si);if(e){e.classList.add('now');e.scrollIntoView({block:'center',behavior:'smooth'});}
 }
 function setCoach(msg,kind){const c=$('#coach');if(!c)return;c.textContent=msg;c.className=kind||'';}
-function clearHeard(){document.querySelectorAll('#text .w.heard').forEach(x=>x.classList.remove('heard'));}
+function curE(){const t=R.sents[R.si];return R.words.slice(t.start,t.end+1).map(w=>w.n);}
 
-function scan(words,start){
-  let t=start,last=t>0?R.words[t-1].n:'',mismatch=false;
-  for(const w of words){
-    if(t>=R.words.length)break;
-    if(FILL.has(w))continue;
-    if(same(w,R.words[t].n)){last=R.words[t].n;t++;continue;}
-    if(same(w,last))continue;
-    mismatch=true;break;
+/* Align what she said (S) with the sentence (E). Returns a status for every expected word:
+   ok = said correctly, sub = said something else, miss = skipped. */
+function align(E,S){
+  const m=E.length,n=S.length,INS=0.5;
+  const D=Array.from({length:m+1},()=>new Array(n+1).fill(0));
+  for(let i=1;i<=m;i++)D[i][0]=i;
+  for(let j=1;j<=n;j++)D[0][j]=j*INS;
+  for(let i=1;i<=m;i++)for(let j=1;j<=n;j++){
+    const mt=same(S[j-1],E[i-1])?0:1;
+    D[i][j]=Math.min(D[i-1][j-1]+mt,D[i-1][j]+1,D[i][j-1]+INS);
   }
-  return {end:t,mismatch};
+  let js=0,bestc=D[m][0];
+  for(let j=1;j<=n;j++){if(D[m][j]<=bestc){bestc=D[m][j];js=j;}}
+  const st=new Array(m).fill('miss');let i=m,j=js;
+  while(i>0||j>0){
+    if(i>0&&j>0){
+      const eq=same(S[j-1],E[i-1]),mt=eq?0:1;
+      if(D[i][j]===D[i-1][j-1]+mt){st[i-1]=eq?'ok':'sub';i--;j--;continue;}
+    }
+    if(i>0&&D[i][j]===D[i-1][j]+1){st[i-1]='miss';i--;continue;}
+    if(j>0){j--;continue;}
+    i--;
+  }
+  return {cost:bestc,st,jEnd:js};
+}
+function reachedEnd(al){
+  const m=al.st.length,nm=al.st.filter(x=>x!=='miss').length;
+  return al.st[m-1]!=='miss'&&nm>=Math.ceil(m*0.6);
+}
+function paint(al,k,final){
+  const s=R.sents[k];
+  let lastNon=-1;al.st.forEach((x,i)=>{if(x!=='miss')lastNon=i;});
+  al.st.forEach((x,i)=>{
+    const idx=s.start+i,el=wEl(idx);if(!el)return;
+    el.classList.remove('ok','bad','heard','help');
+    if(final){if(x==='ok')el.classList.add(R.helped.has(idx)?'help':'ok');else el.classList.add('bad');}
+    else if(x==='ok'&&i<=lastNon)el.classList.add('heard');
+  });
 }
 function onResult(e){
-  if(!R.listening||R.hold)return;
+  if(!R.listening||R.hold||R.si>=R.sents.length)return;
   for(let i=e.resultIndex;i<e.results.length;i++){
-    const r=e.results[i];
-    let best=null,bestText='';
-    for(let a=0;a<r.length;a++){
-      const ws=spokenWords(r[a].transcript);
-      const s=scan(ws,R.cur);
-      if(!best||s.end>best.end||(s.end===best.end&&!s.mismatch&&best.mismatch)){best=s;best.words=ws;bestText=r[a].transcript;}
-    }
-    $('#heard').textContent='I heard: “'+r[0].transcript.trim()+'”';
+    const r=e.results[i],E=curE();
     if(r.isFinal){
-      clearHeard();
-      const progressed=best.end>R.cur;
-      for(let k=R.cur;k<best.end;k++){
-        const el=wEl(k);if(el){el.classList.remove('now','heard');el.classList.add(R.helped.has(k)?'help':'ok');}
+      clearTimeout(R.pt);
+      let best=null;
+      for(let a=0;a<r.length;a++){
+        const ws=spokenWords(r[a].transcript).filter(w=>!FILL.has(w));
+        const S=R.acc.concat(ws),al=align(E,S);
+        if(!best||al.cost<best.al.cost)best={al,S};
       }
-      if(progressed){R.fails=0;R.cur=best.end;}
-      if(R.cur>=R.words.length){completeParagraph();return;}
-      markNow();
-      if(best.mismatch&&best.words.length){wordFail();}
-      else if(progressed)setCoach('Great! Keep going.','good');
+      R.acc=best.S;
+      $('#heard').textContent='I heard: “'+R.acc.join(' ')+'”';
+      evaluate();
     }else{
-      clearHeard();
-      for(let k=R.cur;k<best.end;k++){const el=wEl(k);if(el)el.classList.add('heard');}
+      const ws=spokenWords(r[0].transcript).filter(w=>!FILL.has(w));
+      const S=R.acc.concat(ws);
+      paint(align(E,S),R.si,false);
+      $('#heard').textContent='I heard: “'+S.join(' ')+'”';
     }
   }
 }
-function wordFail(){
-  R.fails++;
-  const w=R.words[R.cur];const el=wEl(R.cur);
-  if(el){el.classList.add('bad');setTimeout(()=>el.classList.remove('bad'),600);}
-  if(R.fails>=2&&R.helped.has(R.cur)){
-    // already coached on this word once: don't leave her stuck, move on
-    setCoach('Good effort! Let’s move on to the next word.','good');
-    const e2=wEl(R.cur);if(e2){e2.classList.remove('now');e2.classList.add('help');}
-    R.cur++;R.fails=0;
-    if(R.cur>=R.words.length)completeParagraph();else markNow();
+function evaluate(){
+  clearTimeout(R.pt);
+  if(R.si>=R.sents.length||!R.acc.length)return;
+  const al=align(curE(),R.acc);
+  if(reachedEnd(al))judge(al);
+  else{
+    paint(al,R.si,false);
+    R.pt=setTimeout(()=>{if(R.listening&&!R.hold&&R.acc.length&&R.si<R.sents.length)judge(align(curE(),R.acc));},3500);
   }
-  else if(R.fails>=2){helpWord();}
-  else setCoach('Not quite. Try the yellow word again! (try '+R.fails+' of 2)','warn');
 }
-function helpWord(){
-  const idx=R.cur,w=R.words[idx];
-  R.fails=0;R.helped.add(idx);
-  addVocab(w.n,sentenceWith(R.doc.paras[R.pi],w.n),true);
-  setCoach('Listen: “'+w.n+'”. Now you say it!','warn');
+function speakList(list,cb){
+  if(!list.length){cb();return;}
+  const w=list.shift();
+  say(w,{rate:0.7,cb:()=>setTimeout(()=>speakList(list,cb),500)});
+}
+function judge(al){
+  clearTimeout(R.pt);
+  const k=R.si,s=R.sents[k];
+  const bad=[];al.st.forEach((x,i)=>{if(x!=='ok')bad.push(s.start+i);});
+  const leftover=R.acc.slice(al.jEnd);
+  if(!bad.length){
+    paint(al,k,true);
+    R.acc=SR?leftover:[];R.attempt=0;R.si++;
+    if(R.si>=R.sents.length){completeParagraph();return;}
+    markNow();setCoach('Great! Next sentence.','good');
+    if(R.acc.length)evaluate();
+    return;
+  }
+  R.attempt++;
+  bad.forEach(i=>R.helped.add(i));
+  paint(al,k,true);
+  R.acc=[];
+  const words=bad.map(i=>R.words[i].n).filter((w,i,a)=>a.indexOf(w)===i);
+  if(R.attempt>=2){
+    bad.forEach(i=>{const el=wEl(i);if(el){el.classList.remove('bad');el.classList.add('help');}});
+    R.attempt=0;R.si++;
+    setCoach('Good effort! The tricky words are saved in My Words. On to the next sentence.','good');
+    if(R.si>=R.sents.length){completeParagraph();return;}
+    markNow();return;
+  }
+  words.forEach(w=>addVocab(w,sentenceWith(R.doc.paras[R.pi],w),true));
+  setCoach('Check the red words: '+words.slice(0,5).join(', ')+'. Listen, then read the whole sentence again!'+(SR?'':' (Use the keyboard microphone again.)'),'warn');
   pauseRec();
-  say(w.n,{rate:0.7,cb:()=>setTimeout(resumeRec,250)});
+  speakList(words.slice(0,5),()=>setTimeout(resumeRec,300));
 }
-function acceptWord(){
-  if(!R.listening&&R.cur>=R.words.length)return;
-  const el=wEl(R.cur);if(!el)return;
-  R.helped.add(R.cur);
-  addVocab(R.words[R.cur].n,sentenceWith(R.doc.paras[R.pi],R.words[R.cur].n),true);
-  el.classList.remove('now');el.classList.add('help');
-  R.cur++;R.fails=0;
-  if(R.cur>=R.words.length)completeParagraph();else markNow();
+function acceptSentence(){
+  if(R.si>=R.sents.length)return;
+  const t=R.sents[R.si];
+  for(let i=t.start;i<=t.end;i++){const el=wEl(i);if(el){el.classList.remove('bad','heard');el.classList.add('ok');}}
+  clearTimeout(R.pt);R.acc=[];R.attempt=0;R.si++;
+  if(R.si>=R.sents.length)completeParagraph();else markNow();
 }
 function completeParagraph(){
   stopListening();
+  document.querySelectorAll('#text .sent.now').forEach(x=>x.classList.remove('now'));
   const d=R.doc;d.done[R.pi]=true;saveDocs();
   const n=R.words.length,h=R.helped.size;
   stats.xp+=n;saveStats();
@@ -401,14 +487,14 @@ function resumeRec(){R.hold=false;if(R.listening)startRec();}
 function startListening(){
   if(!SR)return;
   stopSpeech();clearModel();
-  if(R.doc.done[R.pi]&&R.cur>=R.words.length)return;
+  if(R.si>=R.sents.length){renderRead();}
   R.listening=true;R.hold=false;
   const b=$('#bStart');if(b){b.textContent='⏹ Stop';b.classList.remove('green');b.classList.add('red');}
-  setCoach('I am listening. Read the yellow word out loud!');
+  setCoach('I am listening. Read the highlighted sentence out loud!');
   startRec();
 }
 function stopListening(){
-  R.listening=false;R.hold=false;clearTimeout(recTimer);
+  R.listening=false;R.hold=false;clearTimeout(recTimer);clearTimeout(R.pt);
   if(rec){rec.onend=null;rec.onresult=null;try{rec.abort();}catch(e){}rec=null;}
   const b=$('#bStart');if(b){b.textContent='🎤 Start reading';b.classList.add('green');b.classList.remove('red');}
 }
@@ -581,7 +667,7 @@ function renderLib(){
   <div class="card"><h2>➕ Add a reading</h2>
     <p>Choose a PDF (or .txt file). The app cuts it into short parts so each one is easy to read aloud.</p>
     <div class="row"><input type="file" id="file" accept=".pdf,.txt,application/pdf,text/plain">
-      <select id="size" style="max-width:240px"><option value="30">Short parts (~30 words)</option><option value="50">Medium parts (~50 words)</option><option value="80">Long parts (~80 words)</option><option value="150" selected>Extra long parts (up to 150 words)</option></select></div>
+      <select id="size" style="max-width:240px"><option value="50">Short pages (up to 50 words)</option><option value="100">Medium pages (up to 100 words)</option><option value="150" selected>Long pages (up to 150 words)</option></select></div>
     <p id="status" class="muted"></p>
     <details><summary><b>Or paste text</b></summary>
       <input type="text" id="ptitle" placeholder="Title" style="margin:8px 0"><textarea id="ptext" rows="5" placeholder="Paste text here…"></textarea>
@@ -602,13 +688,8 @@ function chunk(paras,max){
   for(const p of paras){
     const ss=p.replace(/\s+/g,' ').trim().match(/[^.!?]+[.!?]*["')\]”’]*\s*/g)||[];
     for(const s of ss){
-      const words=s.trim().split(/\s+/).filter(Boolean),n=words.length;if(!n)continue;
-      if(n>max){
-        flush();
-        for(let i=0;i<n;i+=max)out.push(words.slice(i,i+max).join(' '));
-        continue;
-      }
-      if(cnt+n>max)flush();
+      const n=s.trim().split(/\s+/).filter(Boolean).length;if(!n)continue;
+      if(cnt+n>max&&cnt>=Math.min(min,10))flush();
       buf.push(s.trim());cnt+=n;
     }
     if(cnt>=min)flush();
