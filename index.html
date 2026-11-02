@@ -29,6 +29,10 @@ button.b:disabled{opacity:.4;cursor:not-allowed}
 #text{font-size:var(--fs);line-height:var(--lh);padding:10px 4px}
 .w{border-radius:8px;padding:0 3px;cursor:pointer;transition:background .15s}
 .w:hover{background:#eef2f7}
+.sent.item{display:block;padding:4px 12px;margin:5px 0;border:1px solid var(--line);border-radius:12px;break-inside:avoid}
+.sent.item.now{box-shadow:0 0 0 3px #fff3b0}
+#text.listmode{column-count:2;column-gap:18px}
+@media (max-width:640px){#text.listmode{column-count:1}}
 .sent.now{background:#fff3b0;border-radius:10px;box-shadow:0 0 0 5px #fff3b0}
 .w.heard{background:var(--brand2)}
 .w.ok{color:var(--good)}
@@ -390,6 +394,7 @@ function renderRead(){
     }
   });
   if(open)html+='</span>';
+  if(d.mode==='list')html=buildList(d);
   el.innerHTML=`
     ${SR?'':'<div class="banner">🎤 This browser can’t listen live (Chrome on iPhone/iPad can’t). <b>Dictation mode</b> is on: tap the microphone key on your keyboard, read the sentence, then tap “Check sentence”. For live listening, open this page in Safari.</div>'}
     <div class="card">
@@ -403,12 +408,13 @@ function renderRead(){
       <div class="bar" style="margin-top:8px"><i style="width:${doneN/d.paras.length*100}%"></i></div>
     </div>
     <div class="card">
-      <div id="text">${html}</div>
-      <div id="coach">Press “Start reading” and read the highlighted sentence out loud. Tap any word to learn it.</div>
+      <div id="text" class="${d.mode==='list'?'listmode':''}">${html}</div>
+      <div id="coach">Press “Start reading” and read the highlighted ${d.mode==='list'?'word':'sentence'} out loud. Tap any word to learn it.</div>
       <div id="heard"></div>
       ${SR?'':'<textarea id="dict" placeholder="Tap the 🎤 on your keyboard and read the highlighted sentence…" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea><div class="row" style="margin:8px 0"><button class="b green" id="dCheck">✅ Check sentence</button></div>'}
       <div class="row">
         ${SR?'<button class="b green" id="bStart">🎤 Start reading</button>':''}
+        ${d.mode==='list'?'<button class="b alt" id="bAddAll">➕ Add these words to My Words</button>':''}
         <button class="b alt" id="bListen">🔊 Listen first</button>
         <button class="b alt" id="bRestart">↺ Restart</button>
         <button class="b alt" id="bAccept" title="For a grown-up: accept the current sentence">✔ Accept sentence (grown-up)</button>
@@ -433,6 +439,11 @@ function renderRead(){
   $('#bListen').onclick=modelRead;
   $('#bRestart').onclick=()=>{stopListening();stopSpeech();renderRead();};
   $('#bAccept').onclick=acceptSentence;
+  if($('#bAddAll'))$('#bAddAll').onclick=async()=>{
+    let n=0;
+    for(const it of d.paras[R.pi].split('\n')){const w=it.toLowerCase().replace(/[^a-z' -]/g,'').trim();if(w){await addVocab(w,'',false,true);n++;}}
+    toast('Added '+n+' words to My Words');
+  };
   $('#bPrev').onclick=()=>{stopListening();R.pi--;renderRead();};
   $('#bNext').onclick=()=>{stopListening();R.pi++;renderRead();startListening();};
   $('#fsm').onclick=()=>{settings.size=Math.max(14,settings.size-2);store.set('settings',settings);document.documentElement.style.setProperty('--fs',settings.size+'px');};
@@ -593,7 +604,7 @@ function startListening(){
   if(R.si>=R.sents.length){renderRead();}
   R.listening=true;R.hold=false;
   const b=$('#bStart');if(b){b.textContent='⏹ Stop';b.classList.remove('green');b.classList.add('red');}
-  setCoach('I am listening. Read the highlighted sentence out loud!');
+  setCoach('I am listening. Read the highlighted '+(R.doc&&R.doc.mode==='list'?'word':'sentence')+' out loud!');
   startRec();
 }
 function stopListening(){
@@ -815,7 +826,7 @@ function renderLib(){
   $('#file').onchange=handleFile;
   $('#cloudRefresh').onclick=loadCloud;
   loadCloud();
-  $('#pbtn').onclick=()=>{const t=$('#ptext').value.trim();if(!t){toast('Paste some text first');return;}addDoc($('#ptitle').value.trim()||'My text',t.split(/\n\s*\n/),+$('#size').value);};
+  $('#pbtn').onclick=()=>{const t=$('#ptext').value.trim();if(!t){toast('Paste some text first');return;}addDoc($('#ptitle').value.trim()||'My text',textToParas(t),+$('#size').value);};
   el.onclick=e=>{
     const cl=e.target.closest('[data-cloud]');if(cl){importCloud(cl.dataset.cloud);return;}
     const o=e.target.closest('[data-open]');if(o){R.doc=null;openDoc(o.dataset.open);show('read');}
@@ -837,7 +848,53 @@ function chunk(paras,max){
   flush();
   return out.filter(x=>x.split(/\s+/).length>=3);
 }
+function textToParas(text){const p=text.split(/\n\s*\n/);p.rawLines=text.split(/\r?\n/);return p;}
+function parseList(lines){
+  const items=[];
+  (lines||[]).forEach(l=>String(l).split(/[\t,;•·|]|\s{3,}/).forEach(x=>{
+    x=x.replace(/^\s*(\(?\d+[.)]|[-–*•])\s*/,'').trim();
+    if(x)items.push(x);
+  }));
+  return items;
+}
+function looksLikeList(items){
+  if(items.length<6)return false;
+  const n=items.length;
+  const short=items.filter(x=>x.split(/\s+/).length<=3).length/n;
+  const sentLike=items.filter(x=>/[.!?]$/.test(x)).length/n;
+  const avg=items.reduce((a,x)=>a+x.split(/\s+/).length,0)/n;
+  return short>=0.85&&sentLike<0.15&&avg<=2.5;
+}
+function addListDoc(title,items,max,cloudName){
+  const seen=new Set();
+  const uniq=items.filter(x=>{const k=x.toLowerCase();if(seen.has(k))return false;seen.add(k);return true;});
+  const per=max<=50?6:(max<=100?10:15);
+  const pages=[];for(let i=0;i<uniq.length;i+=per)pages.push(uniq.slice(i,i+per).join('\n'));
+  const d={id:'d'+Date.now(),title,paras:pages,done:pages.map(()=>false),mode:'list'};
+  if(cloudName)d.cloud=cloudName;
+  docs.push(d);saveDocs();toast('Added word list “'+title+'” ('+uniq.length+' words)');
+  R.doc=null;openDoc(d.id,0);show('read');
+}
+function buildList(d){
+  let html='';R.words=[];R.sents=[];
+  d.paras[R.pi].split('\n').forEach(item=>{
+    const tk=tokenize(item),sp=tk.filter(w=>w.n);
+    if(!sp.length)return;
+    const start=R.words.length;let wi=start;
+    html+='<div class="sent item" data-s="'+R.sents.length+'">';
+    tk.forEach(t=>{
+      if(t.n){html+='<span class="w" data-i="'+wi+'">'+esc(t.t)+'</span>';wi++;}
+      else html+='<span>'+esc(t.t)+'</span>';
+      if(!t.join)html+=' ';
+    });
+    html+='</div>';
+    R.words=R.words.concat(sp);R.sents.push({start,end:wi-1});
+  });
+  return html;
+}
 function addDoc(title,paras,max,cloudName){
+  const items=paras.rawLines?parseList(paras.rawLines):[];
+  if(looksLikeList(items))return addListDoc(title,items,max,cloudName);
   const ch=chunk(paras,max);
   if(!ch.length){$('#status')&&($('#status').textContent='I could not find readable text. Scanned PDFs (pictures of pages) do not work yet.');return;}
   const d={id:'d'+Date.now(),title,paras:ch,done:ch.map(()=>false)};
@@ -866,17 +923,22 @@ function loadPdfJs(){
 async function pdfParas(file,onProg){
   await loadPdfJs();
   const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
-  const paras=[];
+  const paras=[],rawLines=[];
   for(let p=1;p<=pdf.numPages;p++){
     onProg('Reading page '+p+' of '+pdf.numPages+'…');
     const tc=await (await pdf.getPage(p)).getTextContent();
     const lines=[];let cur=null;
     for(const it of tc.items){
       if(!it.str&&!it.hasEOL)continue;
-      const y=it.transform[5];
-      if(cur&&Math.abs(cur.y-y)<2.5)cur.t+=it.str;else{cur={y,t:it.str};lines.push(cur);}
+      const y=it.transform[5],x=it.transform[4];
+      if(cur&&Math.abs(cur.y-y)<2.5){
+        if(cur.end!=null&&x-cur.end>(it.height||10)*1.2&&cur.t&&it.str.trim())cur.t+='\t';
+        cur.t+=it.str;
+      }else{cur={y,t:it.str};lines.push(cur);}
+      cur.end=x+(it.width||0);
     }
     const L=lines.filter(l=>l.t.trim());
+    L.forEach(l=>rawLines.push(l.t));
     const gaps=[];for(let i=1;i<L.length;i++){const g=L[i-1].y-L[i].y;if(g>0)gaps.push(g);}
     gaps.sort((a,b)=>a-b);const med=gaps.length?gaps[Math.floor(gaps.length/2)]:12;
     let curP='';
@@ -889,6 +951,7 @@ async function pdfParas(file,onProg){
     }
     push();
   }
+  paras.rawLines=rawLines;
   return paras;
 }
 const CLOUD={repo:'kacharo/WordExplorer',folder:'readings'};
@@ -919,7 +982,7 @@ async function importCloud(name){
     st.textContent='Downloading '+f.name+'…';
     const r=await fetch(f.download_url);if(!r.ok)throw new Error('download failed ('+r.status+')');
     const blob=await r.blob();
-    const paras=/\.txt$/i.test(f.name)?(await blob.text()).split(/\n\s*\n/):await pdfParas(blob,m=>st.textContent=m);
+    const paras=/\.txt$/i.test(f.name)?textToParas(await blob.text()):await pdfParas(blob,m=>st.textContent=m);
     addDoc(prettyName(f.name),paras,max,f.name);
   }catch(err){st.textContent='Sorry, I could not add that reading. '+(err&&err.message||'');}
 }
@@ -929,7 +992,7 @@ async function handleFile(e){
   const title=f.name.replace(/\.(pdf|txt)$/i,'');
   try{
     let paras;
-    if(/\.txt$/i.test(f.name)||f.type==='text/plain')paras=(await f.text()).split(/\n\s*\n/);
+    if(/\.txt$/i.test(f.name)||f.type==='text/plain')paras=textToParas(await f.text());
     else paras=await pdfParas(f,m=>st.textContent=m);
     addDoc(title,paras,max);
   }catch(err){st.textContent='Sorry, that file could not be opened. '+(err&&err.message||'');}
