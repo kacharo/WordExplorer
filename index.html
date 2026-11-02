@@ -81,6 +81,9 @@ button.b{min-height:44px}
   .grid{grid-template-columns:1fr}
   dialog{padding:16px;width:94%}
 }
+.chip{display:inline-block;background:var(--brand2);color:var(--brand);border-radius:99px;padding:4px 6px 4px 12px;margin:3px;font-weight:700}
+.chip button{border:0;background:transparent;color:var(--brand);font-size:18px;cursor:pointer;padding:0 6px}
+summary{cursor:pointer}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#22303c;color:#fff;padding:10px 18px;border-radius:99px;opacity:0;transition:.3s;pointer-events:none;z-index:20}
 #toast.on{opacity:1}
 </style>
@@ -123,6 +126,13 @@ let vocab=store.get('vocab',{});
 let settings=Object.assign({size:22,spacing:1.7,strict:false},store.get('settings',{}));
 let stats=Object.assign({xp:0},store.get('stats',{}));
 let lastDoc=store.get('lastDoc',null);
+const DEFAULT_SKIP='a an the and but or so if of to in on at by for with from as is am are was were be been it its he him his she her hers they them their we us our you your i me my that this these those there here do did does not no can will would could should has have had what who which when where how than then up out all one into over under about after before very just also too'.split(' ');
+let skipList=store.get('skip',null);
+if(!skipList){skipList=DEFAULT_SKIP.slice();store.set('skip',skipList);}
+let skipSet=new Set(skipList);
+const saveSkip=()=>{skipList=Array.from(new Set(skipList)).sort();skipSet=new Set(skipList);store.set('skip',skipList);};
+if(!store.get('skipClean',false)){Object.keys(vocab).forEach(w=>{if(skipSet.has(w))delete vocab[w];});store.set('vocab',vocab);store.set('skipClean',true);}
+let skipOpen=false;
 const saveDocs=()=>store.set('docs',docs), saveVocab=()=>store.set('vocab',vocab), saveStats=()=>{store.set('stats',stats);$('#xp').textContent='⭐ '+stats.xp;};
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2200);}
 
@@ -219,8 +229,9 @@ async function define(w){
   }
   dictCache[w]=null;return null;
 }
-async function addVocab(w,ctx,helped){
+async function addVocab(w,ctx,helped,force){
   w=w.toLowerCase();
+  if(!force&&skipSet.has(w))return null;
   let e=vocab[w];
   if(!e){e=vocab[w]={w,pos:'',def:'',ex:'',ctx:ctx||'',phonetic:'',mastery:0,added:Date.now(),helped:0};}
   if(helped)e.helped=(e.helped||0)+1;
@@ -442,9 +453,10 @@ function judge(al){
   paint(al,k,true);
   R.acc=SR?leftover:[];
   const words=bad.map(i=>R.words[i].n).filter((w,i,a)=>a.indexOf(w)===i);
-  words.forEach(w=>addVocab(w,sentenceWith(R.doc.paras[R.pi],w),true));
+  const saveWords=words.filter(w=>!skipSet.has(w));
+  saveWords.forEach(w=>addVocab(w,sentenceWith(R.doc.paras[R.pi],w),true));
   R.si++;
-  setCoach('Saved to My Words to practice: '+words.slice(0,6).join(', ')+(words.length>6?'…':'')+'. Keep going!','warn');
+  setCoach(saveWords.length?'Saved to My Words to practice: '+saveWords.slice(0,6).join(', ')+(saveWords.length>6?'…':'')+'. Keep going!':'A few small words were missed (marked red). Keep going!','warn');
   if(R.si>=R.sents.length){completeParagraph();return;}
   markNow();
   if(R.acc.length)evaluate();
@@ -461,9 +473,10 @@ function completeParagraph(){
   document.querySelectorAll('#text .sent.now').forEach(x=>x.classList.remove('now'));
   const d=R.doc;d.done[R.pi]=true;saveDocs();
   const n=R.words.length,h=R.helped.size;
+  const hs=Array.from(R.helped).map(i=>R.words[i].n).filter((w,i,a)=>a.indexOf(w)===i&&!skipSet.has(w)).length;
   stats.xp+=n;saveStats();
   const last=d.done.every(Boolean);
-  setCoach('🎉 Part complete! You read '+n+' words'+(h?' ('+h+' tricky word'+(h>1?'s are':' is')+' marked red and saved in My Words to practice)':' with no mistakes')+'.'+(last?' You finished the whole reading! Try Word Quest next.':''),'good');
+  setCoach('🎉 Part complete! You read '+n+' words'+(h?' ('+h+' word'+(h>1?'s':'')+' marked red'+(hs?'; '+hs+' saved in My Words to practice':'')+')':' with no mistakes')+'.'+(last?' You finished the whole reading! Try Word Quest next.':''),'good');
   const nx=$('#bNext');if(nx&&R.pi<d.paras.length-1)nx.disabled=false;
   const bs=$('#bStart');if(bs)bs.textContent='🎤 Read again';
 }
@@ -524,7 +537,7 @@ async function wordPopup(w,ctxPar){
   dlg.innerHTML=h;
   $('#dHear').onclick=()=>say(w,{rate:0.75});
   $('#dClose').onclick=()=>dlg.close();
-  $('#dAdd').onclick=async()=>{await addVocab(w,ctx,false);$('#dAdd').textContent='✔ In My Words';toast('Added “'+w+'”');};
+  $('#dAdd').onclick=async()=>{await addVocab(w,ctx,false,true);$('#dAdd').textContent='✔ In My Words';toast('Added “'+w+'”');};
 }
 
 /* ---------- MY WORDS ---------- */
@@ -533,9 +546,13 @@ function renderWords(){
   const list=Object.values(vocab).sort((a,b)=>a.mastery-b.mastery||b.added-a.added);
   el.innerHTML=`
     <div class="card"><h2>🧠 My Words (${list.length})</h2>
-      <p class="muted">Words you tap while reading or need help with land here. Add your own too!</p>
+      <p class="muted">Words you miss while reading, or add yourself, land here. Small words like “an” or “the” are ignored.</p>
       <div class="row"><input type="text" id="newWord" placeholder="Type a new word…" style="max-width:320px"><button class="b" id="addW">➕ Add</button><button class="b green" id="goPlay">🎮 Practice</button><button class="b red" id="delAll" ${list.length?'':'disabled'}>🗑 Delete all words</button></div>
     </div>
+    <details class="card" id="skipBox" ${skipOpen?'open':''}><summary><b>🚫 Ignored words (${skipList.length})</b> <span class="muted">— small words that are never added automatically</span></summary>
+      <div style="margin:10px 0">${skipList.map(w=>`<span class="chip">${esc(w)} <button data-unskip="${esc(w)}" aria-label="Stop ignoring ${esc(w)}">×</button></span>`).join('')}</div>
+      <div class="row"><input type="text" id="skipNew" placeholder="Words to ignore, e.g. then, very" style="max-width:320px"><button class="b" id="skipAdd">➕ Ignore</button><button class="b alt" id="skipReset">Reset list</button></div>
+    </details>
     <div class="grid">${list.map(v=>`
       <div class="wc"><h3>${esc(v.w)} <button class="b alt" data-hear="${esc(v.w)}" style="padding:4px 10px">🔊</button></h3>
       <div class="muted">${esc(v.phonetic||'')} <span class="pos">${esc(v.pos||'')}</span></div>
@@ -544,8 +561,17 @@ function renderWords(){
       <div class="row" style="justify-content:space-between"><span class="dots">${'●'.repeat(v.mastery)}${'○'.repeat(5-v.mastery)}</span>${v.helped?'<span class="muted">⚠ missed '+v.helped+'×</span>':''}</div></div>`).join('')||'<p class="muted">No words yet. Tap a word in Read to start!</p>'}</div>`;
   $('#goPlay').onclick=()=>show('play');
   $('#delAll').onclick=()=>{if(confirm('Delete all '+list.length+' words? This cannot be undone.')){vocab={};saveVocab();renderWords();}};
-  $('#addW').onclick=async()=>{const w=$('#newWord').value.trim().toLowerCase();if(!/^[a-z'-]+$/.test(w)){toast('Type one word');return;}await addVocab(w,'',false);renderWords();};
+  $('#addW').onclick=async()=>{const w=$('#newWord').value.trim().toLowerCase();if(!/^[a-z'-]+$/.test(w)){toast('Type one word');return;}await addVocab(w,'',false,true);renderWords();};
+  $('#skipBox').ontoggle=e=>{skipOpen=e.target.open;};
+  $('#skipAdd').onclick=()=>{
+    const ws=$('#skipNew').value.toLowerCase().split(/[\s,]+/).map(w=>w.replace(/[^a-z']/g,'')).filter(Boolean);
+    if(!ws.length){toast('Type a word to ignore');return;}
+    ws.forEach(w=>{skipList.push(w);delete vocab[w];});
+    saveSkip();saveVocab();skipOpen=true;renderWords();
+  };
+  $('#skipReset').onclick=()=>{if(confirm('Reset the ignored list to the standard small words?')){skipList=DEFAULT_SKIP.slice();saveSkip();skipOpen=true;renderWords();}};
   el.onclick=e=>{
+    const u=e.target.closest('[data-unskip]');if(u){skipList=skipList.filter(w=>w!==u.dataset.unskip);saveSkip();skipOpen=true;renderWords();return;}
     const h=e.target.closest('[data-hear]');if(h)say(h.dataset.hear,{rate:0.75});
     const d=e.target.closest('[data-del]');if(d){delete vocab[d.dataset.del];saveVocab();renderWords();}
   };
