@@ -214,21 +214,49 @@ function variants(w){
   const c=[w,w.replace(/ies$/,'y'),w.replace(/ied$/,'y'),w.replace(/es$/,''),w.replace(/s$/,''),w.replace(/ed$/,''),w.replace(/ed$/,'e'),w.replace(/ing$/,''),w.replace(/ing$/,'e'),w.replace(/ly$/,''),w.replace(/er$/,''),w.replace(/est$/,'')];
   return c.filter((x,i)=>x&&x.length>2&&c.indexOf(x)===i);
 }
+const dictLog={};
+async function getJSON(name,url,ms){
+  const c=new AbortController();const t=setTimeout(()=>c.abort(),ms||8000);
+  try{
+    const r=await fetch(url,{signal:c.signal});clearTimeout(t);
+    if(r.status===404){dictLog[name]='ok';return null;}
+    if(!r.ok){dictLog[name]='error '+r.status;return null;}
+    const j=await r.json();dictLog[name]='ok';return j;
+  }catch(err){clearTimeout(t);dictLog[name]=(err&&err.name==='AbortError')?'timed out':'blocked or offline';return null;}
+}
+const DMPOS={n:'noun',v:'verb',adj:'adjective',adv:'adverb',u:'word'};
 async function define(w){
   w=w.toLowerCase();
-  if(w in dictCache)return dictCache[w];
+  if(dictCache[w])return dictCache[w];
+  // 1) dictionaryapi.dev
   for(const v of variants(w)){
-    try{
-      const r=await fetch('https://api.dictionaryapi.dev/v2/entries/en/'+encodeURIComponent(v));
-      if(!r.ok)continue;
-      const j=await r.json();const e=j[0];
-      const ph=e.phonetics||[];
+    const j=await getJSON('dictionaryapi.dev','https://api.dictionaryapi.dev/v2/entries/en/'+encodeURIComponent(v));
+    if(Array.isArray(j)&&j[0]){
+      const e=j[0],ph=e.phonetics||[];
       const out={word:e.word,phonetic:e.phonetic||(ph.find(p=>p.text)||{}).text||'',audio:(ph.find(p=>p.audio)||{}).audio||'',
-        meanings:(e.meanings||[]).slice(0,3).map(m=>({pos:m.partOfSpeech,defs:m.definitions.slice(0,2).map(d=>({def:d.definition,ex:d.example||''}))}))};
-      dictCache[w]=out;return out;
-    }catch(err){}
+        meanings:(e.meanings||[]).slice(0,4).map(m=>({pos:m.partOfSpeech,defs:m.definitions.slice(0,3).map(d=>({def:d.definition,ex:d.example||''}))}))};
+      if(out.meanings.length){dictCache[w]=out;return out;}
+    }
   }
-  dictCache[w]=null;return null;
+  // 2) Wiktionary
+  const wk=await wikt('en.wiktionary.org',w);
+  if(wk.defs.length){
+    const by={};wk.defs.slice(0,8).forEach(x=>{(by[x.pos||'word']=by[x.pos||'word']||[]).push({def:x.d,ex:''});});
+    const out={word:w,phonetic:'',audio:'',meanings:Object.keys(by).slice(0,4).map(k=>({pos:k,defs:by[k].slice(0,3)}))};
+    if(wk.exs[0])out.meanings[0].defs[0].ex=wk.exs[0];
+    dictCache[w]=out;return out;
+  }
+  // 3) Datamuse (short definitions, no examples)
+  for(const v of variants(w)){
+    const dm=await getJSON('datamuse','https://api.datamuse.com/words?sp='+encodeURIComponent(v)+'&md=d&max=1');
+    if(Array.isArray(dm)&&dm[0]&&dm[0].word===v&&dm[0].defs&&dm[0].defs.length){
+      const by={};
+      dm[0].defs.slice(0,6).forEach(x=>{const i=x.indexOf('\t');const k=DMPOS[x.slice(0,i)]||'word';(by[k]=by[k]||[]).push({def:x.slice(i+1),ex:''});});
+      const out={word:v,phonetic:'',audio:'',meanings:Object.keys(by).slice(0,4).map(k=>({pos:k,defs:by[k].slice(0,3)}))};
+      dictCache[w]=out;return out;
+    }
+  }
+  return null;
 }
 const BADDEF=/\b(archaic|obsolete|dated|rare|plural of|past tense|past participle|present participle|alternative|variant of|misspelling|abbreviation of|initialism|slang|vulgar|offensive|informal)\b/i;
 const TRAIL=new Set(['a','an','the','of','to','and','or','in','with','that','which','for','by','as','is','are','from','on','at']);
@@ -262,9 +290,8 @@ async function wikt(host,w){
   const out={defs:[],exs:[]};
   for(const v of variants(w)){
     try{
-      const r=await fetch('https://'+host+'/api/rest_v1/page/definition/'+encodeURIComponent(v));
-      if(!r.ok)continue;
-      const j=await r.json();
+      const j=await getJSON(host,'https://'+host+'/api/rest_v1/page/definition/'+encodeURIComponent(v));
+      if(!j)continue;
       for(const part of (j.en||[]))for(const df of (part.definitions||[])){
         const t=htmlText(df.definition);if(t)out.defs.push({d:t,pos:part.partOfSpeech});
         (df.examples||[]).concat((df.parsedExamples||[]).map(x=>x.example)).forEach(h=>{const x=htmlText(h);if(x)out.exs.push(x);});
@@ -598,7 +625,7 @@ async function wordPopup(w,ctxPar){
   let h=`<h2>${esc(w)} <span class="muted" style="font-size:18px">${esc(d?d.phonetic:'')}</span></h2>`;
   if(d){
     d.meanings.forEach(m=>{h+=`<div class="def"><span class="pos">${esc(m.pos)}</span><br>`+m.defs.map(x=>'• '+esc(simplifyDef(x.def)||x.def)+(x.ex?'<br><span class="muted">“'+esc(x.ex)+'”</span>':'')).join('<br>')+'</div>';});
-  }else h+='<p>I could not find this word in the dictionary (check your internet connection).</p>';
+  }else h+='<p>I could not find this word. Either it is not in the dictionary, or the dictionary can’t be reached. In My Words, tap “🔧 Test dictionary”.</p>';
   if(ctx)h+='<p class="muted">From your reading: “'+esc(ctx)+'”</p>';
   h+=`<div class="row" style="margin-top:12px"><button class="b alt" id="dHear">🔊 Hear it</button><button class="b green" id="dAdd">${have?'✔ In My Words':'➕ Add to My Words'}</button><button class="b alt" id="dClose">Close</button></div>`;
   dlg.innerHTML=h;
@@ -614,7 +641,7 @@ function renderWords(){
   el.innerHTML=`
     <div class="card"><h2>🧠 My Words (${list.length})</h2>
       <p class="muted">Words you miss while reading, or add yourself, land here. Small words like “an” or “the” are ignored.</p>
-      <div class="row"><input type="text" id="newWord" placeholder="Type a new word…" style="max-width:320px"><button class="b" id="addW">➕ Add</button><button class="b green" id="goPlay">🎮 Practice</button><button class="b alt" id="refreshW">🔄 Refresh meanings</button><button class="b red" id="delAll" ${list.length?'':'disabled'}>🗑 Delete all words</button></div>
+      <div class="row"><input type="text" id="newWord" placeholder="Type a new word…" style="max-width:320px"><button class="b" id="addW">➕ Add</button><button class="b green" id="goPlay">🎮 Practice</button><button class="b alt" id="refreshW">🔄 Refresh meanings</button><button class="b alt" id="testDict">🔧 Test dictionary</button><button class="b red" id="delAll" ${list.length?'':'disabled'}>🗑 Delete all words</button></div>
     </div>
     <details class="card" id="skipBox" ${skipOpen?'open':''}><summary><b>🚫 Ignored words (${skipList.length})</b> <span class="muted">— small words that are never added automatically</span></summary>
       <div style="margin:10px 0">${skipList.map(w=>`<span class="chip">${esc(w)} <button data-unskip="${esc(w)}" aria-label="Stop ignoring ${esc(w)}">×</button></span>`).join('')}</div>
@@ -629,6 +656,14 @@ function renderWords(){
       <div class="row" style="justify-content:space-between"><span class="dots">${'●'.repeat(v.mastery)}${'○'.repeat(5-v.mastery)}</span>${v.helped?'<span class="muted">⚠ missed '+v.helped+'×</span>':''}</div>
       <div class="row" style="margin-top:8px"><button class="b alt" data-ignore="${esc(v.w)}" style="padding:6px 12px;min-height:36px">🚫 Ignore this word</button></div></div>`).join('')||'<p class="muted">No words yet. Tap a word in Read to start!</p>'}</div>`;
   $('#goPlay').onclick=()=>show('play');
+  $('#testDict').onclick=async()=>{
+    const dlg=$('#dlg');dlg.innerHTML='<h2>Testing dictionary connections…</h2><p class="muted">This takes a few seconds.</p>';if(!dlg.open)dlg.showModal();
+    const tests=[['dictionaryapi.dev','https://api.dictionaryapi.dev/v2/entries/en/cat'],['en.wiktionary.org','https://en.wiktionary.org/api/rest_v1/page/definition/cat'],['simple.wiktionary.org','https://simple.wiktionary.org/api/rest_v1/page/definition/cat'],['datamuse','https://api.datamuse.com/words?sp=cat&md=d&max=1']];
+    const rs=[];
+    for(const t of tests){await getJSON(t[0],t[1],8000);rs.push('<div class="def"><b>'+esc(t[0])+':</b> '+(dictLog[t[0]]==='ok'?'✅ working':'❌ '+esc(dictLog[t[0]]))+'</div>');}
+    dlg.innerHTML='<h2>Dictionary test</h2>'+rs.join('')+'<p class="muted">“Blocked or offline” means this browser or network can’t reach that site (a content blocker, filter, VPN or privacy setting can do this). If at least one shows ✅, meanings will still work.</p><div class="row"><button class="b alt" id="tClose">Close</button></div>';
+    $('#tClose').onclick=()=>dlg.close();
+  };
   $('#refreshW').onclick=()=>{Object.values(vocab).forEach(v=>{v.fail=false;v.sv=0;});triedNow.clear();renderWords();toast('Looking up meanings…');};
   const need=list.filter(v=>(!v.def||!v.ex||v.sv!==1)&&!triedNow.has(v.w));
   if(need.length){need.forEach(v=>triedNow.add(v.w));Promise.all(need.map(enrich)).then(()=>{if(tab==='words')renderWords();});}
