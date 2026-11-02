@@ -796,6 +796,11 @@ function answer(ok,btn){
 function renderLib(){
   const el=$('#tab-lib');
   el.innerHTML=`
+  <div class="card"><h2>☁️ Cloud library</h2>
+    <p class="muted">PDFs stored in your GitHub repository (<b>${esc(CLOUD.folder)}</b> folder). They are available on every device.</p>
+    <div class="row" style="margin-bottom:8px"><button class="b alt" id="cloudRefresh">🔄 Refresh list</button></div>
+    <div id="cloudList"></div>
+  </div>
   <div class="card"><h2>➕ Add a reading</h2>
     <p>Choose a PDF (or .txt file). The app cuts it into short parts so each one is easy to read aloud.</p>
     <div class="row"><input type="file" id="file" accept=".pdf,.txt,application/pdf,text/plain">
@@ -808,8 +813,11 @@ function renderLib(){
   ${docs.map(d=>{const n=d.done.filter(Boolean).length;return `<div class="card"><div class="row" style="justify-content:space-between"><div><b>${esc(d.title)}</b><br><span class="muted">${n} of ${d.paras.length} parts finished</span></div>
    <div class="row"><button class="b" data-open="${esc(d.id)}">Open</button><button class="b red" data-rm="${esc(d.id)}">Delete</button></div></div><div class="bar" style="margin-top:8px"><i style="width:${n/d.paras.length*100}%"></i></div></div>`;}).join('')}`;
   $('#file').onchange=handleFile;
+  $('#cloudRefresh').onclick=loadCloud;
+  loadCloud();
   $('#pbtn').onclick=()=>{const t=$('#ptext').value.trim();if(!t){toast('Paste some text first');return;}addDoc($('#ptitle').value.trim()||'My text',t.split(/\n\s*\n/),+$('#size').value);};
   el.onclick=e=>{
+    const cl=e.target.closest('[data-cloud]');if(cl){importCloud(cl.dataset.cloud);return;}
     const o=e.target.closest('[data-open]');if(o){R.doc=null;openDoc(o.dataset.open);show('read');}
     const r=e.target.closest('[data-rm]');if(r&&confirm('Delete this reading?')){docs=docs.filter(d=>d.id!==r.dataset.rm);saveDocs();if(R.doc&&R.doc.id===r.dataset.rm)R.doc=null;renderLib();}
   };
@@ -829,10 +837,11 @@ function chunk(paras,max){
   flush();
   return out.filter(x=>x.split(/\s+/).length>=3);
 }
-function addDoc(title,paras,max){
+function addDoc(title,paras,max,cloudName){
   const ch=chunk(paras,max);
   if(!ch.length){$('#status')&&($('#status').textContent='I could not find readable text. Scanned PDFs (pictures of pages) do not work yet.');return;}
   const d={id:'d'+Date.now(),title,paras:ch,done:ch.map(()=>false)};
+  if(cloudName)d.cloud=cloudName;
   docs.push(d);saveDocs();toast('Added “'+title+'” ('+ch.length+' parts)');
   R.doc=null;openDoc(d.id,0);show('read');
 }
@@ -881,6 +890,38 @@ async function pdfParas(file,onProg){
     push();
   }
   return paras;
+}
+const CLOUD={repo:'kacharo/WordExplorer',folder:'readings'};
+let cloudFiles=[];
+const prettyName=n=>n.replace(/\.(pdf|txt)$/i,'').replace(/[_]+/g,' ').trim();
+async function loadCloud(){
+  const box=$('#cloudList');if(!box)return;
+  box.innerHTML='<p class="muted">Loading…</p>';
+  try{
+    const r=await fetch('https://api.github.com/repos/'+CLOUD.repo+'/contents/'+CLOUD.folder);
+    if(r.status===404){box.innerHTML='<p class="muted">No “'+esc(CLOUD.folder)+'” folder in the repository yet. Add a PDF to it, then tap Refresh.</p>';return;}
+    if(r.status===403){box.innerHTML='<p class="muted">GitHub asked us to slow down. Wait a few minutes and tap Refresh.</p>';return;}
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const j=await r.json();
+    cloudFiles=(Array.isArray(j)?j:[]).filter(f=>f.type==='file'&&/\.(pdf|txt)$/i.test(f.name));
+    if(!cloudFiles.length){box.innerHTML='<p class="muted">The folder is empty. Add a PDF to it, then tap Refresh.</p>';return;}
+    box.innerHTML=cloudFiles.map(f=>{
+      const have=docs.find(d=>d.cloud===f.name);
+      return `<div class="row" style="justify-content:space-between;padding:8px 0;border-top:1px solid var(--line)"><div><b>${esc(prettyName(f.name))}</b><br><span class="muted">${Math.round(f.size/1024)} KB${have?' · ✅ in your library':''}</span></div>
+      <button class="b ${have?'alt':''}" ${have?'data-open="'+esc(have.id)+'"':'data-cloud="'+esc(f.name)+'"'}>${have?'Open':'⬇ Add to my library'}</button></div>`;
+    }).join('');
+  }catch(err){box.innerHTML='<p class="muted">Could not reach GitHub ('+esc(err.message||'offline')+'). Check the internet and tap Refresh.</p>';}
+}
+async function importCloud(name){
+  const f=cloudFiles.find(x=>x.name===name);if(!f)return;
+  const st=$('#status'),max=+$('#size').value;
+  try{
+    st.textContent='Downloading '+f.name+'…';
+    const r=await fetch(f.download_url);if(!r.ok)throw new Error('download failed ('+r.status+')');
+    const blob=await r.blob();
+    const paras=/\.txt$/i.test(f.name)?(await blob.text()).split(/\n\s*\n/):await pdfParas(blob,m=>st.textContent=m);
+    addDoc(prettyName(f.name),paras,max,f.name);
+  }catch(err){st.textContent='Sorry, I could not add that reading. '+(err&&err.message||'');}
 }
 async function handleFile(e){
   const f=e.target.files[0];if(!f)return;
