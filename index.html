@@ -133,6 +133,7 @@ let skipSet=new Set(skipList);
 const saveSkip=()=>{skipList=Array.from(new Set(skipList)).sort();skipSet=new Set(skipList);store.set('skip',skipList);};
 if(!store.get('skipClean',false)){Object.keys(vocab).forEach(w=>{if(skipSet.has(w))delete vocab[w];});store.set('vocab',vocab);store.set('skipClean',true);}
 let skipOpen=false;
+const triedNow=new Set();
 const saveDocs=()=>store.set('docs',docs), saveVocab=()=>store.set('vocab',vocab), saveStats=()=>{store.set('stats',stats);$('#xp').textContent='⭐ '+stats.xp;};
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2200);}
 
@@ -229,6 +230,75 @@ async function define(w){
   }
   dictCache[w]=null;return null;
 }
+const BADDEF=/\b(archaic|obsolete|dated|rare|plural of|past tense|past participle|present participle|alternative|variant of|misspelling|abbreviation of|initialism|slang|vulgar|offensive|informal)\b/i;
+const TRAIL=new Set(['a','an','the','of','to','and','or','in','with','that','which','for','by','as','is','are','from','on','at']);
+function simplifyDef(t){
+  t=String(t||'').replace(/\([^)]*\)/g,'').replace(/\[[^\]]*\]/g,'').replace(/\s+/g,' ').trim();
+  t=t.split(/;|:\s/)[0].trim();
+  let w=t.split(' ').filter(Boolean);
+  if(w.length>14){
+    let cut=w.slice(0,14).join(' ');
+    const k=cut.lastIndexOf(',');if(k>25)cut=cut.slice(0,k);
+    w=cut.split(' ');
+  }
+  while(w.length>3&&TRAIL.has(w[w.length-1].toLowerCase().replace(/[^a-z]/g,'')))w.pop();
+  t=w.join(' ').replace(/[.,\s]+$/,'');
+  return t?t.charAt(0).toUpperCase()+t.slice(1)+'.':'';
+}
+function scoreDef(t){const w=t.split(/\s+/);return w.length+1.5*(t.replace(/[^a-z]/gi,'').length/w.length);}
+function pickDef(c){
+  let best=null;
+  for(const x of c){
+    if(BADDEF.test(x.d))continue;
+    const sd=simplifyDef(x.d);
+    if(sd.split(/\s+/).length<3)continue;
+    const sc=scoreDef(sd)+(x.bonus||0);
+    if(!best||sc<best.sc)best={s:sd,pos:x.pos,sc};
+  }
+  return best;
+}
+const htmlText=h=>((new DOMParser().parseFromString(String(h||''),'text/html').body.textContent)||'').replace(/\s+/g,' ').trim();
+async function wikt(host,w){
+  const out={defs:[],exs:[]};
+  for(const v of variants(w)){
+    try{
+      const r=await fetch('https://'+host+'/api/rest_v1/page/definition/'+encodeURIComponent(v));
+      if(!r.ok)continue;
+      const j=await r.json();
+      for(const part of (j.en||[]))for(const df of (part.definitions||[])){
+        const t=htmlText(df.definition);if(t)out.defs.push({d:t,pos:part.partOfSpeech});
+        (df.examples||[]).concat((df.parsedExamples||[]).map(x=>x.example)).forEach(h=>{const x=htmlText(h);if(x)out.exs.push(x);});
+      }
+      if(out.defs.length)return out;
+    }catch(err){}
+  }
+  return out;
+}
+function pickEx(list){
+  const ok=list.filter(x=>{const n=x.split(/\s+/).length;return n>=4&&n<=22;});
+  ok.sort((a,b)=>a.length-b.length);
+  return ok[0]||'';
+}
+async function enrich(e){
+  try{
+    const sw=await wikt('simple.wiktionary.org',e.w);
+    const d=await define(e.w);
+    const cands=[];
+    sw.defs.forEach(x=>cands.push({d:x.d,pos:x.pos,bonus:-4}));
+    if(d)d.meanings.forEach((m,mi)=>m.defs.forEach((x,xi)=>cands.push({d:x.def,pos:m.pos,bonus:(mi===0&&xi===0)?-3:0})));
+    const best=pickDef(cands);
+    if(best){e.def=best.s;e.pos=best.pos||e.pos;}
+    if(d&&!e.phonetic)e.phonetic=d.phonetic;
+    let exs=sw.exs.slice();
+    if(d)d.meanings.forEach(m=>m.defs.forEach(x=>{if(x.ex)exs.push(x.ex);}));
+    let ex=pickEx(exs);
+    if(!ex){const en=await wikt('en.wiktionary.org',e.w);ex=pickEx(en.exs);}
+    if(ex)e.ex=ex;
+    if(e.def)e.sv=1;
+  }catch(err){}
+  e.fail=!e.def;
+  saveVocab();
+}
 async function addVocab(w,ctx,helped,force){
   w=w.toLowerCase();
   if(!force&&skipSet.has(w))return null;
@@ -237,10 +307,7 @@ async function addVocab(w,ctx,helped,force){
   if(helped)e.helped=(e.helped||0)+1;
   if(ctx&&!e.ctx)e.ctx=ctx;
   saveVocab();
-  if(!e.def){
-    const d=await define(w);
-    if(d&&d.meanings[0]){e.pos=d.meanings[0].pos;e.def=d.meanings[0].defs[0].def;e.ex=d.meanings[0].defs[0].ex||'';e.phonetic=d.phonetic;saveVocab();}
-  }
+  if(!e.def||!e.ex||e.sv!==1){await enrich(e);}
   return e;
 }
 
@@ -530,7 +597,7 @@ async function wordPopup(w,ctxPar){
   const have=!!vocab[w];
   let h=`<h2>${esc(w)} <span class="muted" style="font-size:18px">${esc(d?d.phonetic:'')}</span></h2>`;
   if(d){
-    d.meanings.forEach(m=>{h+=`<div class="def"><span class="pos">${esc(m.pos)}</span><br>`+m.defs.map(x=>'• '+esc(x.def)+(x.ex?'<br><span class="muted">“'+esc(x.ex)+'”</span>':'')).join('<br>')+'</div>';});
+    d.meanings.forEach(m=>{h+=`<div class="def"><span class="pos">${esc(m.pos)}</span><br>`+m.defs.map(x=>'• '+esc(simplifyDef(x.def)||x.def)+(x.ex?'<br><span class="muted">“'+esc(x.ex)+'”</span>':'')).join('<br>')+'</div>';});
   }else h+='<p>I could not find this word in the dictionary (check your internet connection).</p>';
   if(ctx)h+='<p class="muted">From your reading: “'+esc(ctx)+'”</p>';
   h+=`<div class="row" style="margin-top:12px"><button class="b alt" id="dHear">🔊 Hear it</button><button class="b green" id="dAdd">${have?'✔ In My Words':'➕ Add to My Words'}</button><button class="b alt" id="dClose">Close</button></div>`;
@@ -547,7 +614,7 @@ function renderWords(){
   el.innerHTML=`
     <div class="card"><h2>🧠 My Words (${list.length})</h2>
       <p class="muted">Words you miss while reading, or add yourself, land here. Small words like “an” or “the” are ignored.</p>
-      <div class="row"><input type="text" id="newWord" placeholder="Type a new word…" style="max-width:320px"><button class="b" id="addW">➕ Add</button><button class="b green" id="goPlay">🎮 Practice</button><button class="b red" id="delAll" ${list.length?'':'disabled'}>🗑 Delete all words</button></div>
+      <div class="row"><input type="text" id="newWord" placeholder="Type a new word…" style="max-width:320px"><button class="b" id="addW">➕ Add</button><button class="b green" id="goPlay">🎮 Practice</button><button class="b alt" id="refreshW">🔄 Refresh meanings</button><button class="b red" id="delAll" ${list.length?'':'disabled'}>🗑 Delete all words</button></div>
     </div>
     <details class="card" id="skipBox" ${skipOpen?'open':''}><summary><b>🚫 Ignored words (${skipList.length})</b> <span class="muted">— small words that are never added automatically</span></summary>
       <div style="margin:10px 0">${skipList.map(w=>`<span class="chip">${esc(w)} <button data-unskip="${esc(w)}" aria-label="Stop ignoring ${esc(w)}">×</button></span>`).join('')}</div>
@@ -556,10 +623,15 @@ function renderWords(){
     <div class="grid">${list.map(v=>`
       <div class="wc"><h3>${esc(v.w)} <button class="b alt" data-hear="${esc(v.w)}" style="padding:4px 10px">🔊</button></h3>
       <div class="muted">${esc(v.phonetic||'')} <span class="pos">${esc(v.pos||'')}</span></div>
-      <p>${esc(v.def||'Looking for a meaning… tap the word in a reading to see it.')}</p>
-      ${v.ctx?'<p class="muted">“'+esc(v.ctx)+'”</p>':''}
-      <div class="row" style="justify-content:space-between"><span class="dots">${'●'.repeat(v.mastery)}${'○'.repeat(5-v.mastery)}</span>${v.helped?'<span class="muted">⚠ missed '+v.helped+'×</span>':''}</div></div>`).join('')||'<p class="muted">No words yet. Tap a word in Read to start!</p>'}</div>`;
+      <p><b>Meaning:</b> ${v.def?esc(v.def):(v.fail?'Not found. Try 🔄 Refresh meanings.':'Looking it up…')}</p>
+      ${v.ex?'<p><b>Example:</b> “'+esc(v.ex)+'”</p>':''}
+      ${v.ctx?'<p class="muted"><b>From your reading:</b> “'+esc(v.ctx)+'”</p>':''}
+      <div class="row" style="justify-content:space-between"><span class="dots">${'●'.repeat(v.mastery)}${'○'.repeat(5-v.mastery)}</span>${v.helped?'<span class="muted">⚠ missed '+v.helped+'×</span>':''}</div>
+      <div class="row" style="margin-top:8px"><button class="b alt" data-ignore="${esc(v.w)}" style="padding:6px 12px;min-height:36px">🚫 Ignore this word</button></div></div>`).join('')||'<p class="muted">No words yet. Tap a word in Read to start!</p>'}</div>`;
   $('#goPlay').onclick=()=>show('play');
+  $('#refreshW').onclick=()=>{Object.values(vocab).forEach(v=>{v.fail=false;v.sv=0;});triedNow.clear();renderWords();toast('Looking up meanings…');};
+  const need=list.filter(v=>(!v.def||!v.ex||v.sv!==1)&&!triedNow.has(v.w));
+  if(need.length){need.forEach(v=>triedNow.add(v.w));Promise.all(need.map(enrich)).then(()=>{if(tab==='words')renderWords();});}
   $('#delAll').onclick=()=>{if(confirm('Delete all '+list.length+' words? This cannot be undone.')){vocab={};saveVocab();renderWords();}};
   $('#addW').onclick=async()=>{const w=$('#newWord').value.trim().toLowerCase();if(!/^[a-z'-]+$/.test(w)){toast('Type one word');return;}await addVocab(w,'',false,true);renderWords();};
   $('#skipBox').ontoggle=e=>{skipOpen=e.target.open;};
@@ -571,6 +643,8 @@ function renderWords(){
   };
   $('#skipReset').onclick=()=>{if(confirm('Reset the ignored list to the standard small words?')){skipList=DEFAULT_SKIP.slice();saveSkip();skipOpen=true;renderWords();}};
   el.onclick=e=>{
+    const ig=e.target.closest('[data-ignore]');
+    if(ig){const w=ig.dataset.ignore;if(!skipList.includes(w))skipList.push(w);delete vocab[w];saveSkip();saveVocab();toast('“'+w+'” will be ignored. You can undo it in Ignored words.');renderWords();return;}
     const u=e.target.closest('[data-unskip]');if(u){skipList=skipList.filter(w=>w!==u.dataset.unskip);saveSkip();skipOpen=true;renderWords();return;}
     const h=e.target.closest('[data-hear]');if(h)say(h.dataset.hear,{rate:0.75});
     const d=e.target.closest('[data-del]');if(d){delete vocab[d.dataset.del];saveVocab();renderWords();}
